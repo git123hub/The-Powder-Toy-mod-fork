@@ -89,16 +89,32 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 		{
 			rr = (rtmp >> 5) & ((rtmp >> 19 & 1) - 1);
 			direction = (rr + (rtmp >> 17)) & 0x3;
-			r = pmap[y + tron_ry[direction]][x + tron_rx[direction]];
-			if ((r & 0xFF) == PT_E189 && (parts[r >> 8].life & ~0x1) == 2)
+			rx = x + tron_rx[direction];
+			ry = y + tron_ry[direction];
+			r = pmap[ry][rx];
+			rii = parts[r >> 8].life;
+			rrx = rii >> 1;
+			if ((r & 0xFF) == PT_E189 && (rrx == 1 || rrx == 15))
 			{
 				ri = r >> 8;
-				parts[ri].tmp &= 0xE0000;
+				if (rii == 31) // delay
+				{
+					if (parts[ri].tmp3)
+						goto break1c;
+					else
+						parts[ri].tmp3 = parts[ri].ctype;
+				}
+				parts[ri].tmp &= (rii == 30 ? 0x700000 : 0) | 0xE0000;
 				parts[ri].tmp |= (rtmp & 0x1FF9F) | (direction << 5);
 				if (ri > i)
 					sim->parts[ri].tmp |= 0x04;
 				parts[ri].tmp2 = parts[i].tmp2;
 			}
+			else if ((r & 0xFF) == PT_METL || (r & 0xFF) == PT_PSCN || (r & 0xFF) == PT_NSCN)
+			{
+				sim->create_part(-1, rx, ry, PT_SPRK);
+			}
+		break1c:
 			rtmp &= 0xE0000;
 		}
 		parts[i].tmp = rtmp;
@@ -402,7 +418,7 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 						if ((rtmp & 0x1) && sim->elements[rt].Properties & PROP_CONDUCTS && parts[r>>8].life == 0)
 						{
 							parts[r>>8].life = 4;
-							parts[r>>8].cdcolour = parts[r>>8].ctype;
+							// parts[r>>8].cdcolour = parts[r>>8].ctype;
 							parts[r>>8].ctype = rt;
 							sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
 						}
@@ -608,14 +624,13 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 		case 6: // wire crossing
 		case 7:
 			{
-				int ii;
 				if (parts[i].tmp2 == 2)
 				{
-					for (ii = 0; ii < 4; ii++)
+					for (rii = 0; rii < 4; rii++)
 					{
 						if (BOUNDS_CHECK)
 						{
-							r = osc_r1[ii], rtmp = parts[i].tmp;
+							r = osc_r1[rii], rtmp = parts[i].tmp;
 							if (rtmp & 1 << (rctype & 1))
 								sim->create_part(-1, x+r, y, PT_SPRK);
 							if (rtmp & 2 >> (rctype & 1))
@@ -623,11 +638,11 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 						}
 					}
 				}
-				for (rr = ii = 0; ii < 4; ii++)
+				for (rr = rii = 0; rii < 4; rii++)
 				{
 					if (BOUNDS_CHECK)
 					{
-						r = osc_r1[ii];
+						r = osc_r1[rii];
 						rx = pmap[y][x+r];
 						ry = pmap[y+r][x];
 						if ((rx & 0xFF) == PT_SPRK && parts[rx>>8].life == 3) rr |= 1;
@@ -730,6 +745,75 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 			break1b:
 			break;
 		// case 11: reserved for E189's life = 24.
+		case 12:
+			{
+				rndstore = rand();
+				rx = (rndstore&1)*2-1;
+				ry = (rndstore&2)-1;
+				if (parts[i].tmp2 == 1)
+				{
+					for (rii = 1; rii <= 2; rii++)
+					{
+						if (BOUNDS_CHECK)
+						{
+							rtmp = parts[i].tmp;
+							rrx = pmap[y][x+rx*rii];
+							rry = pmap[y+ry*rii][x];
+							if ((rry & 0xFF) == PT_NSCN && parts[rry>>8].life == 0 && (rtmp & 1))
+								sim->create_part(rry, x, y+ry*rii, PT_SPRK);
+							if ((rrx & 0xFF) == PT_NSCN && parts[rrx>>8].life == 0 && (rtmp & 2))
+								sim->create_part(rrx, x+rx*rii, y, PT_SPRK);
+						}
+					}
+				}
+				for (rr = rii = 0; rii < 4; rii++)
+				{
+					if (BOUNDS_CHECK)
+					{
+						r = osc_r1[rii];
+						rx = pmap[y][x+r];
+						ry = pmap[y+r][x];
+						if ((rx & 0xFF) == PT_SPRK && parts[rx>>8].life == 3 && parts[rx>>8].ctype == PT_PSCN) rr |= 1;
+						if ((ry & 0xFF) == PT_SPRK && parts[ry>>8].life == 3 && parts[ry>>8].ctype == PT_PSCN) rr |= 2;
+					}
+				}
+				if (rr && !((rctype & 1) && parts[i].tmp2))
+				{
+					parts[i].tmp = rr; parts[i].tmp2 = 2;
+				}
+			}
+			break;
+		case 13:
+			if (parts[i].tmp2 == 1)
+			{
+				for (rx = -2; rx <= 2; rx++)
+					for (ry = -2; ry <= 2; ry++)
+						if (BOUNDS_CHECK && (rx || ry))
+						{
+							r = pmap[y+ry][x+rx];
+							if ((r & 0xFF) == PT_NSCN)
+								sim->create_part(r>>8,x+rx,y+ry,PT_PSCN);
+							if ((r & 0xFF) == PT_PSCN)
+							{
+								parts[r>>8].life = 4;
+								parts[r>>8].ctype = PT_NSCN;
+								sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
+							}
+						}
+			}
+			for (rx = -2; rx <= 2; rx++)
+				for (ry = -2; ry <= 2; ry++)
+					if (BOUNDS_CHECK && (rx || ry))
+					{
+						r = pmap[y+ry][x+rx];
+						rr = ((r>>8) > i) ? (parts[r>>8].tmp) : (parts[r>>8].tmp2);
+						if ((r & 0xFF) == PT_E189 && parts[r>>8].life == 19 && rr == 9)
+						{
+							parts[i].tmp2 = 2;
+							goto break1a;
+						}
+					}
+			break;
 		}
 		break;
 			
@@ -773,7 +857,8 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 				}
 		break;
 	case 21:
-	/* MERC/DEUT/YEST expander, or SPNG "water releaser".
+	/* MERC/DEUT/YEST expander, or SPNG "water releaser",
+	 *   or TRON detector.
 	 * note: exclude E185 "replicating powder"
 	 */
 		rndstore = rand(), trade = 5;
@@ -782,62 +867,82 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 			{
 				if (BOUNDS_CHECK && (rx || ry))
 				{
-					if (!(rndstore&7))
+					r = pmap[y+ry][x+rx];
+					if ((r & 0xFF) == PT_TRON && !(rx && ry)) // (!(rx && ry)) equivalent to (!rx || !ry)
 					{
-						r = pmap[y+ry][x+rx];
-						switch (r & 0xFF)
+						rr = pmap[y-ry][x-rx];
+						rt = rr & 0xFF;
+						rr >>= 8;
+						if (parts[rr].life == 30)
 						{
-						case PT_MERC:
-							parts[r>>8].tmp += parts[i].tmp;
-							break;
-						case PT_DEUT:
-							parts[r>>8].life += parts[i].tmp;
-							break;
-						case PT_YEST:
-							rtmp = parts[i].tmp;
-							if (rtmp > 0)
-								parts[r>>8].temp = 303.0f + (rtmp > 28 ? 28 : (float)rtmp * 0.5f);
-							else if (-rtmp > (rand()&31))
-								sim->kill_part(r>>8);
-							break;
-						case PT_SPNG:
-							if (parts[r>>8].life > 0)
+							if ((parts[rr].tmp >> 20) == 3)
 							{
-								rr = sim->create_part(-1, x-rx, y-ry, PT_WATR);
-								if (rr >= 0)
-									parts[r>>8].life --;
+								parts[rr].ctype &= ~0x1F;
+								parts[rr].ctype |= (parts[r>>8].tmp >> 11) & 0x1F;
 							}
-							break;
-						case PT_VIBR:
-							if (parts[r>>8].tmp > 0)
-							{
-								rr = pmap[y-ry][x-rx];
-								rt = rr & 0xFF;
-								if (rt == PT_WATR || rt == PT_DSTW || rt == PT_SLTW || rt == PT_CBNW)
-								{
-									if(!(rand()%3))
-										sim->part_change_type(rr>>8, x-rx, y-ry, PT_O2);
-									else
-										sim->part_change_type(rr>>8, x-rx, y-ry, PT_H2);
-									if (rt == PT_CBNW)
-									{
-										rrx = rand() % 5 - 2;
-										rry = rand() % 5 - 2;
-										sim->create_part(-1, x+rrx, y+rry, PT_CO2);
-									}
-									parts[r>>8].tmp --;
-								}
-							}
-							break;
+							else
+								parts[rr].ctype = (parts[r>>8].tmp >> 7) & 0x1FF;
 						}
 					}
-					if (!--trade)
-					{
-						trade = 5;
-						rndstore = rand();
-					}
 					else
-						rndstore >>= 3;
+					{
+						if (!(rndstore&7))
+						{
+							switch (r & 0xFF)
+							{
+							case PT_MERC:
+								parts[r>>8].tmp += parts[i].tmp;
+								break;
+							case PT_DEUT:
+								parts[r>>8].life += parts[i].tmp;
+								break;
+							case PT_YEST:
+								rtmp = parts[i].tmp;
+								if (rtmp > 0)
+									parts[r>>8].temp = 303.0f + (rtmp > 28 ? 28 : (float)rtmp * 0.5f);
+								else if (-rtmp > (rand()&31))
+									sim->kill_part(r>>8);
+								break;
+							case PT_SPNG:
+								if (parts[r>>8].life > 0)
+								{
+									rr = sim->create_part(-1, x-rx, y-ry, PT_WATR);
+									if (rr >= 0)
+										parts[r>>8].life --;
+								}
+								break;
+							case PT_VIBR:
+								if (parts[r>>8].tmp > 0)
+								{
+									rr = pmap[y-ry][x-rx];
+									rt = rr & 0xFF;
+									if (rt == PT_WATR || rt == PT_DSTW || rt == PT_SLTW || rt == PT_CBNW)
+									{
+										rr >>= 8;
+										if(!(rand()%3))
+											sim->part_change_type(rr, x-rx, y-ry, PT_O2);
+										else
+											sim->part_change_type(rr, x-rx, y-ry, PT_H2);
+										if (rt == PT_CBNW)
+										{
+											rrx = rand() % 5 - 2;
+											rry = rand() % 5 - 2;
+											sim->create_part(-1, x+rrx, y+rry, PT_CO2);
+										}
+										parts[r>>8].tmp --;
+									}
+								}
+								break;
+							}
+						}
+						if (!--trade)
+						{
+							trade = 5;
+							rndstore = rand();
+						}
+						else
+							rndstore >>= 3;
+					}
 				}
 			}
 		break;
@@ -924,6 +1029,117 @@ int Element_E189::update(UPDATE_FUNC_ARGS)
 			}
 			parts[i].tmp --;
 		}
+		break;
+	case 28: // ARAY/BRAY reflector
+		for (rx = -1; rx < 2; rx++)
+			for (ry = -1; ry < 2; ry++)
+				if (BOUNDS_CHECK && (rx || ry))
+				{
+					r = pmap[y+ry][x+rx];
+					if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+					{
+						parts[i].tmp ^= 1;
+						goto break3;
+					}
+				}
+		break;
+	case 29: // TRON emitter
+		for (rr = 0; rr < 4; rr++)
+			if (BOUNDS_CHECK)
+			{
+				rx = tron_rx[rr];
+				ry = tron_ry[rr];
+				r = pmap[y-ry][x-rx];
+				if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+				{
+					r = sim->create_part (-1, x+rx, y+ry, PT_TRON);
+					if (r >= 0) {
+						rrx = parts[r].tmp;
+						rrx &= ~0x1006A; // clear direction data and custom flags
+						rrx |= rr << 5; // set direction data
+						rrx |= ((rtmp & 1) << 1) | ((rtmp & 2) << 2) | ((rtmp & 4) << 14); // set custom flags
+						if (r > i) rrx |= 0x04;
+						parts[r].tmp = rrx;
+					}
+				}
+			}
+		break;
+	case 30: // TRON filter
+		if (rtmp & 0x04)
+			rtmp &= ~0x04;
+		else if (rtmp & 0x01)
+		{
+			rt = rtmp >> 20;
+			rrx = parts[i].ctype;
+			if (rt == 4) // TRON splitter
+			{
+				for (rr = 0; rr < 4; rr++)
+				{
+					r = pmap[y + tron_ry[rr]][x + tron_rx[rr]];
+					if ((r & 0xFF) == PT_E189 && parts[r >> 8].life == 3)
+					{
+						ri = r >> 8;
+						parts[ri].tmp &= 0xE0000;
+						parts[ri].tmp |= (rtmp & 0x1FF9F) | (rr << 5);
+						if (ri > i)
+							sim->parts[ri].tmp |= 0x04;
+						parts[ri].tmp2 = parts[i].tmp2;
+					}
+				}
+				parts[i].tmp = rtmp & 0x7E0000;
+				break;
+			}
+			rr = (rtmp >> 5) & ((rtmp >> 19 & 1) - 1);
+			direction = (rr + (rtmp >> 17)) & 0x3;
+			r = pmap[y + tron_ry[direction]][x + tron_rx[direction]];
+			rii = parts[r >> 8].life;
+			if ((r & 0xFF) == PT_E189 && rii == 3)
+			{
+				ri = r >> 8;
+				parts[ri].tmp &= 0xE0000;
+				rctype = (rtmp >> 7) & 0x1FF;
+				switch (rt & 7)
+				{
+					case 0: rctype  = rrx; break; // set colour
+					case 1: rctype += rrx; break; // hue shift (add)
+					case 2: rctype -= rrx; break; // hue shift (subtract)
+					case 3: // if color is / isn't ... then pass through
+						if ((((rctype >> 4) & 0x1F) == rrx) == ((rrx >> 5) & 1)) // rightmost 5 bits xnor 6th bit
+							rtmp = 0;
+					break;
+				}
+				parts[ri].tmp |= (rtmp & 0x1009F) | (((rctype % 368 + 368) % 368) << 7) | (direction << 5); // colour modulo 368, rather than 360
+				if (ri > i)
+					sim->parts[ri].tmp |= 0x04;
+				parts[ri].tmp2 = parts[i].tmp2;
+			}
+			rtmp &= 0x7E0000;
+		}
+		parts[i].tmp = rtmp;
+		break;
+	case 31: // TRON delay
+		if (rtmp & 0x04)
+			rtmp &= ~0x04;
+		else if (parts[i].tmp3)
+			parts[i].tmp3--;
+		else if (rtmp & 0x01)
+		{
+			rr = (rtmp >> 5) & ((rtmp >> 19 & 1) - 1);
+			direction = (rr + (rtmp >> 17)) & 0x3;
+			r = pmap[y + tron_ry[direction]][x + tron_rx[direction]];
+			rii = parts[r >> 8].life;
+			if ((r & 0xFF) == PT_E189 && (rii & ~0x1) == 2)
+			{
+				ri = r >> 8;
+				parts[ri].tmp |= (rtmp & 0x1FF9F) | (direction << 5);
+				if (ri > i)
+					sim->parts[ri].tmp |= 0x04;
+				parts[ri].tmp2 = parts[i].tmp2;
+			}
+			rtmp &= 0xE0000;
+		}
+		parts[i].tmp = rtmp;
+		break;
 	}
 	
 	if(ttan>=2) {
@@ -1154,6 +1370,18 @@ int Element_E189::graphics(GRAPHICS_FUNC_ARGS)
 		break;
 	case 27:
 		*colr = 0x20; *colg = 0x33; *colb = 0xCC;
+		break;
+	case 28:
+		*colr = 0xFF; *colg = 0xDD; *colb = 0x80;
+		break;
+	case 29:
+		*colr = 0xD4; *colg = 0xE7; *colb = 0x08;
+		break;
+	case 30:
+		*colr = 0x70; *colg = 0x99; *colb = 0xCC;
+		break;
+	case 31:
+		*colr = 0x99; *colg = 0x70; *colb = 0xD0;
 		break;
 	}
 	return 0;
