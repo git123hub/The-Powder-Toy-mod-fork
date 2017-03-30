@@ -98,13 +98,16 @@ int Element_TRON::update(UPDATE_FUNC_ARGS)
 	if (parts[i].tmp&TRON_HEAD)
 	{
 		int firstdircheck = 0,seconddir,seconddircheck = 0,lastdir,lastdircheck = 0;
-		int firstE189, secondE189, lastE189;
-		bool secondE189dir, lastE189dir;
+		bool firstE189, secondE189, lastE189;
+		int secondE189dir, lastE189dir;
 		int direction = (parts[i].tmp>>5 & 0x3);
 		int originaldir = direction;
 
 		//random turn
 		int random = rand()%340;
+
+		// approximately 97 in 32768 turn left,
+		// approximately 97 in 32768 turn right.
 		if ((random==1 || random==3) && !(parts[i].tmp & TRON_NORANDOM))
 		{
 			//randomly turn left(3) or right(1)
@@ -215,7 +218,7 @@ int Element_TRON::graphics(GRAPHICS_FUNC_ARGS)
 int Element_TRON::new_tronhead(Simulation * sim, int x, int y, int i, int direction)
 {
 	int r = sim->pmap[y][x];
-	if ((r & 0xFF) == PT_E189)
+	if ((r & 0xFF) == PT_E189 && sim->parts[r>>8].life == 2)
 	{
 		int ri = r >> 8;
 		sim->parts[ri].tmp &= 0xE0000;
@@ -294,7 +297,7 @@ int Element_TRON::trymovetron(Simulation * sim, int x, int y, int dir, int i, in
 //#TPT-Directive ElementHeader Element_TRON static bool canmovetron(Simulation * sim, int r, int len)
 bool Element_TRON::canmovetron(Simulation * sim, int r, int len)
 {
-	if (!r || ((r&0xFF) == PT_SWCH && sim->parts[r>>8].life >= 10) || ((r&0xFF) == PT_INVIS && sim->parts[r>>8].tmp == 1))
+	if (!r || ( ( (r&0xFF) == PT_SWCH || (r&0xFF) == PT_PINVIS ) && sim->parts[r>>8].life >= 10) || ((r&0xFF) == PT_INVIS && sim->parts[r>>8].tmp == 1))
 		return true;
 	if ((((sim->elements[r&0xFF].Properties & PROP_LIFE_KILL_DEC) && sim->parts[r>>8].life > 0)|| ((sim->elements[r&0xFF].Properties & PROP_LIFE_KILL) && (sim->elements[r&0xFF].Properties & PROP_LIFE_DEC))) && sim->parts[r>>8].life < len)
 		return true;
