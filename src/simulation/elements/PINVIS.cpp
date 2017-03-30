@@ -41,8 +41,8 @@ Element_PINVIS::Element_PINVIS()
 	HighTemperature = ITH;
 	HighTemperatureTransition = NT;
 
-	Update = &Element_INVIS::update;
-	Graphics = &Element_INVIS::graphics;
+	Update = &Element_PINVIS::update;
+	Graphics = &Element_PINVIS::graphics;
 }
 
 //#TPT-Directive ElementHeader Element_PINVIS static int update(UPDATE_FUNC_ARGS)
@@ -74,5 +74,21 @@ int Element_PINVIS::update(UPDATE_FUNC_ARGS)
 	}
 	return 0;
 }
+
+//#TPT-Directive ElementHeader Element_PINVIS static int graphics(GRAPHICS_FUNC_ARGS)
+int Element_PINVIS::graphics(GRAPHICS_FUNC_ARGS)
+{
+	//pv[ny/CELL][nx/CELL]>4.0f || pv[ny/CELL][nx/CELL]<-4.0f
+	if(cpart->life >= 10)
+	{
+		*cola = 100;
+		*colr = 15;
+		*colg = 0;
+		*colb = 150;
+		*pixel_mode = PMODE_BLEND;
+	} 
+	return 0;
+}
+
 
 Element_PINVIS::~Element_PINVIS() {}
