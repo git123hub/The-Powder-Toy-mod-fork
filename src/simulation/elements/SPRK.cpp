@@ -253,22 +253,32 @@ int Element_SPRK::update(UPDATE_FUNC_ARGS)
 					}
 					continue;
 				case PT_PINVIS:
-					tmp = parts[r>>8].life;
+					tmp = sim->parts[r>>8].ctype & 0x0FFF;
+					// wireless2[][1] - whether channel should be active on next frame
+					// for wireless2[][0] - see PINVIS.cpp and Simulation.cpp
 					if (parts[i].life<4)
 					{
-						if (sender == PT_PSCN)
+						if (sender == PT_PSCN && parts[r>>8].life<10)
 						{
 							// Instantly activate PINV
-							PropertyValue PINVIS_VALUE;
-							PINVIS_VALUE.Integer = 10;
-							sim->flood_prop(x+rx, y+ry, offsetof(Particle, life), PINVIS_VALUE, StructProperty::Integer);
+							/*
+							sim->ISWIRE2 = 1;
+							sim->wireless2[tmp >> 5][1] |= 1 << (tmp & 0x1F);
+							*/
+							PropertyValue value;
+							value.Integer = 10;
+							sim->flood_prop(x+rx, y+ry, offsetof(Particle, life), value, StructProperty::Integer);
 						}
-						else if (sender == PT_NSCN && tmp >= 10)
+						else if (sender == PT_NSCN)
 						{
 							// Instantly deactivate PINV
-							PropertyValue PINVIS_VALUE;
-							PINVIS_VALUE.Integer = 9;
-							sim->flood_prop(x+rx, y+ry, offsetof(Particle, life), PINVIS_VALUE, StructProperty::Integer);
+							/*
+							sim->ISWIRE2 = 1;
+							sim->wireless2[tmp >> 5][1] &= ~(1 << (tmp & 0x1F));
+							*/
+							PropertyValue value;
+							value.Integer = 9;
+							sim->flood_prop(x+rx, y+ry, offsetof(Particle, life), value, StructProperty::Integer);
 						}
 					}
 					continue;

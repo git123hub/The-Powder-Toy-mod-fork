@@ -53,6 +53,13 @@ originalData(save.originalData)
 	}
 	particlesCount = save.particlesCount;
 	fromNewerVersion = false;
+/*
+	for (int i = 0; i < 128; i++)
+	{
+		PINV_wireless[i][0] = 0;
+		PINV_wireless[i][1] = 0;
+	}
+*/
 }
 
 GameSave::GameSave(int width, int height)
@@ -189,6 +196,13 @@ void GameSave::Expand()
 		airMode = 0;
 		edgeMode = 0;
 		expanded = true;
+/*
+		for (int i = 0; i < 128; i++)
+		{
+			PINV_wireless[i][0] = 0;
+			PINV_wireless[i][1] = 0;
+		}
+*/
 		read(&originalData[0], originalData.size());
 	}
 }
@@ -450,6 +464,7 @@ void GameSave::readOPS(char * data, int dataLength)
 {
 	unsigned char * inputData = (unsigned char*)data, *bsonData = NULL, *partsData = NULL, *partsPosData = NULL, *fanData = NULL, *wallData = NULL, *soapLinkData = NULL;
 	unsigned int inputDataLen = dataLength, bsonDataLen = 0, partsDataLen, partsPosDataLen, fanDataLen, wallDataLen, soapLinkDataLen;
+	// unsigned char * PINV_wireless_data;
 	unsigned partsCount = 0, *partsSimIndex = NULL;
 	int *freeIndices = NULL;
 	unsigned int blockX, blockY, blockW, blockH, fullX, fullY, fullW, fullH;
@@ -623,6 +638,26 @@ void GameSave::readOPS(char * data, int dataLength)
 				fprintf(stderr, "Invalid datatype of soap data: %d[%d] %d[%d] %d[%d]\n", bson_iterator_type(&iter), bson_iterator_type(&iter)==BSON_BINDATA, (unsigned char)bson_iterator_bin_type(&iter), ((unsigned char)bson_iterator_bin_type(&iter))==BSON_BIN_USER, bson_iterator_bin_len(&iter), bson_iterator_bin_len(&iter)>0);
 			}
 		}
+/*
+		else if(strcmp(bson_iterator_key(&iter), "PINV_wireless")==0)
+		{
+			if(bson_iterator_type(&iter)==BSON_BINDATA && ((unsigned char)bson_iterator_bin_type(&iter))==BSON_BIN_USER && (soapLinkDataLen = bson_iterator_bin_len(&iter)) > 0)
+			{
+				PINV_wireless_data = (unsigned char *)bson_iterator_bin_data(&iter);
+				for (int __i = 0; __i < 128; __i++)
+				{
+					int __j = __i * sizeof(int);
+					PINV_wireless[__i][0] = PINV_wireless[__i][1] =
+					((PINV_wireless_data[__j+3] & 0xFF) << 24) | ((PINV_wireless_data[__j+2] & 0xFF) << 16) |
+					((PINV_wireless_data[__j+1] & 0xFF) <<  8) |  (PINV_wireless_data[__j  ] & 0xFF);
+				}
+			}
+			else
+			{
+				fprintf(stderr, "Invalid datatype of PINV_wireless data: %d[%d] %d[%d] %d[%d]\n", bson_iterator_type(&iter), bson_iterator_type(&iter)==BSON_BINDATA, (unsigned char)bson_iterator_bin_type(&iter), ((unsigned char)bson_iterator_bin_type(&iter))==BSON_BIN_USER, bson_iterator_bin_len(&iter), bson_iterator_bin_len(&iter)>0);
+			}
+		}
+*/
 		else if(strcmp(bson_iterator_key(&iter), "legacyEnable")==0)
 		{
 			if(bson_iterator_type(&iter)==BSON_BOOL)
@@ -1917,6 +1952,7 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 {
 	//Particle *particles = sim->parts;
 	unsigned char *partsData = NULL, *partsPosData = NULL, *fanData = NULL, *wallData = NULL, *finalData = NULL, *outputData = NULL, *soapLinkData = NULL;
+//	unsigned char *PINV_wireless_data = NULL;
 	unsigned *partsPosLink = NULL, *partsPosFirstMap = NULL, *partsPosCount = NULL, *partsPosLastMap = NULL;
 	unsigned partsCount = 0, *partsSaveIndex = NULL;
 	unsigned *elementCount = new unsigned[PT_NUM];
@@ -2218,7 +2254,8 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 						desc2Data |= 4;
 					}
 					ExtraData = (unsigned)(particles[i].tmp4);
-					if (ExtraData)
+					//Don't save tmp4 for PINV
+					if (ExtraData && particles[i].type != PT_PINVIS)
 					{
 						partsData[partsDataLen++] = (ExtraData >> 8) & 0x00FF;
 						partsData[partsDataLen++] = ExtraData & 0x00FF;
@@ -2382,6 +2419,23 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 		}
 		bson_append_finish_array(&b);
 	}
+/*
+	if (elementCount[PT_PINVIS])
+	{
+		PINV_wireless_data = (unsigned char*)malloc(128 * sizeof(int));
+		for (int __i = 0; i < 128; __i++)
+		{
+			int __j = __i * sizeof(int);
+			PINV_wireless_data[__j  ] =  PINV_wireless[__i][0]      & 0xFF;
+			PINV_wireless_data[__j+1] = (PINV_wireless[__i][0]>> 8) & 0xFF;
+			PINV_wireless_data[__j+2] = (PINV_wireless[__i][0]>>16) & 0xFF;
+			PINV_wireless_data[__j+3] = (PINV_wireless[__i][0]>>24) & 0xFF;
+		}
+		bson_append_binary(&b, "PINV_wireless", BSON_BIN_USER, (const char *)PINV_wireless_data, 128 * sizeof(int));
+		free(PINV_wireless_data);
+		// PINV_wireless_data = NULL;
+	}
+*/
 	bson_finish(&b);
 #ifdef DEBUG
 	bson_print(&b);

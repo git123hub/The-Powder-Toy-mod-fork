@@ -312,6 +312,7 @@ void Simulation::SaveSimOptions(GameSave * gameSave)
 	gameSave->gravityEnable = grav->ngrav_enable;
 	gameSave->aheatEnable = aheat_enable;
 	gameSave->sextraLoopsCA = extraLoopsCA;
+	// gameSave->PINV_wireless = wireless2;
 }
 
 Snapshot * Simulation::CreateSnapshot()
@@ -508,6 +509,7 @@ SimulationSample Simulation::GetSample(int x, int y)
 		{
 			sample.particle = parts[pmap[y][x]>>8];
 			sample.ParticleID = pmap[y][x]>>8;
+			sample.cparticle = &(parts[sample.particle.tmp4>>8]);
 		}
 		if (bmap[y/CELL][x/CELL])
 		{
@@ -1931,6 +1933,7 @@ void Simulation::clear_sim(void)
 		memset(fvy, 0, sizeof(fvy));
 	memset(photons, 0, sizeof(photons));
 	memset(wireless, 0, sizeof(wireless));
+	// memset(wireless2, 0, sizeof(wireless2));
 	memset(gol2, 0, sizeof(gol2));
 	memset(portalp, 0, sizeof(portalp));
 	memset(fighters, 0, sizeof(fighters));
@@ -1943,6 +1946,7 @@ void Simulation::clear_sim(void)
 	player2.spwn = 0;
 	player2.spawnID = -1;
 	player2.rocketBoots = false;
+
 	//memset(pers_bg, 0, WINDOWW*YRES*PIXELSIZE);
 	//memset(fire_r, 0, sizeof(fire_r));
 	//memset(fire_g, 0, sizeof(fire_g));
@@ -2169,6 +2173,10 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 	r = pmap[ny][nx];
 	if (r)
 		r = (r&~0xFF) | parts[r>>8].type;
+	// modified code
+	if ((r&0xFF) == PT_PINVIS && parts[r>>8].tmp4)
+		r = parts[r>>8].tmp4;
+
 	if (rr)
 		*rr = r;
 	if (pt>=PT_NUM || (r&0xFF)>=PT_NUM)
@@ -2581,8 +2589,7 @@ int Simulation::do_move(int i, int x, int y, float nxf, float nyf)
 		parts[i].y = nyf;
 		if (ny!=y || nx!=x)
 		{
-			if ((pmap[y][x]>>8)==i) pmap[y][x] = 0;
-			else if ((photons[y][x]>>8)==i) photons[y][x] = 0;
+			pmap_remove (i, x, y, PT_PINVIS);
 			if (nx<CELL || nx>=XRES-CELL || ny<CELL || ny>=YRES-CELL)//kill_part if particle is out of bounds
 			{
 				kill_part(i);
@@ -2590,6 +2597,8 @@ int Simulation::do_move(int i, int x, int y, float nxf, float nyf)
 			}
 			if (elements[t].Properties & TYPE_ENERGY)
 				photons[ny][nx] = t|(i<<8);
+			else if (t && (pmap[ny][nx]&0xFF) == PT_PINVIS)
+				parts[pmap[ny][nx]>>8].tmp4 = t|(i<<8);
 			else if (t)
 				pmap[ny][nx] = t|(i<<8);
 		}
@@ -2782,10 +2791,7 @@ void Simulation::kill_part(int i)//kills particle number i
 	int x = (int)(parts[i].x+0.5f);
 	int y = (int)(parts[i].y+0.5f);
 	if (x>=0 && y>=0 && x<XRES && y<YRES) {
-		if ((pmap[y][x]>>8)==i)
-			pmap[y][x] = 0;
-		else if ((photons[y][x]>>8)==i)
-			photons[y][x] = 0;
+		pmap_remove ((unsigned int)i, x, y, PT_PINVIS);
 	}
 
 	if (parts[i].type == PT_NONE)
@@ -2905,18 +2911,8 @@ void Simulation::part_change_type(int i, int x, int y, int t)//changes the type 
 		etrd_life0_count++;
 
 	parts[i].type = t;
-	if (elements[t].Properties & TYPE_ENERGY)
-	{
-		photons[y][x] = t|(i<<8);
-		if ((pmap[y][x]>>8)==i)
-			pmap[y][x] = 0;
-	}
-	else
-	{
-		pmap[y][x] = t|(i<<8);
-		if ((photons[y][x]>>8)==i)
-			photons[y][x] = 0;
-	}
+	pmap_remove(i, x, y, PT_PINVIS);
+	pmap_add(i, x, y, t);
 }
 
 //the function for creating a particle, use p=-1 for creating a new particle, -2 is from a brush, or a particle number to replace a particle.
@@ -3083,11 +3079,8 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 	{
 		int oldX = (int)(parts[p].x+0.5f);
 		int oldY = (int)(parts[p].y+0.5f);
-		if ((pmap[oldY][oldX]>>8)==p)
-			pmap[oldY][oldX] = 0;
-		if ((photons[oldY][oldX]>>8)==p)
-			photons[oldY][oldX] = 0;
-
+		pmap_remove(p, oldX, oldY, PT_PINVIS);
+		
 		if (parts[p].type == PT_STKM)
 		{
 			player.spwn = 0;
@@ -4374,8 +4367,7 @@ killed:
 				}
 				if (ny!=y || nx!=x)
 				{
-					if ((pmap[y][x]>>8)==i) pmap[y][x] = 0;
-					else if ((photons[y][x]>>8)==i) photons[y][x] = 0;
+					pmap_remove (i, x, y, PT_PINVIS);
 					if (nx<CELL || nx>=XRES-CELL || ny<CELL || ny>=YRES-CELL)
 					{
 						kill_part(i);
@@ -5191,7 +5183,7 @@ void Simulation::SimulateLLoops()
 
 void Simulation::RecalcFreeParticles()
 {
-	int x, y, t;
+	int x, y, t, tt;
 	int lastPartUsed = 0;
 	int lastPartUnused = -1;
 
@@ -5210,16 +5202,24 @@ void Simulation::RecalcFreeParticles()
 			y = (int)(parts[i].y+0.5f);
 			if (x>=0 && y>=0 && x<XRES && y<YRES)
 			{
+				
+				if (t == PT_PINVIS && (parts[i].tmp2>>8) >= i)
+					parts[i].tmp4 = 0;
+
 				if (elements[t].Properties & TYPE_ENERGY)
 					photons[y][x] = t|(i<<8);
 				else
 				{
 					// Particles are sometimes allowed to go inside INVS and FILT
 					// To make particles collide correctly when inside these elements, these elements must not overwrite an existing pmap entry from particles inside them
-					if (!(pmap[y][x] && (elements[t].Properties & PROP_INVISIBLE)))
+					if (!pmap[y][x] || ( !(elements[t].Properties & PROP_INVISIBLE) && !(tt = (pmap[y][x]&0xFF) == PT_PINVIS) ))
 						pmap[y][x] = t|(i<<8);
+					else if (tt)
+						parts[pmap[y][x]>>8].tmp4 = t|(i<<8);
+
 					// (there are a few exceptions, including energy particles - currently no limit on stacking those)
-					if (t!=PT_THDR && t!=PT_EMBR && t!=PT_FIGH && t!=PT_PLSM)
+
+					if (!(elements[t].Properties & PROP_UNLIMSTACKING)) // (t!=PT_THDR && t!=PT_EMBR && t!=PT_FIGH && t!=PT_PLSM)
 						pmap_count[y][x]++;
 				}
 			}
@@ -5565,6 +5565,17 @@ void Simulation::BeforeSim()
 			}
 			ISWIRE--;
 		}
+		
+#if 0
+		if (ISWIRE2 > 0)
+		{
+			for (int q = 0; q < 128; q++) // 128 * 32 = 4096 channels
+			{
+				wireless2[q][0] = wireless2[q][1];
+			}
+			ISWIRE--;
+		}
+#endif
 
 		// spawn STKM and STK2
 		if (!player.spwn && player.spawnID >= 0)
@@ -5632,6 +5643,7 @@ Simulation::Simulation():
 	replaceModeFlags(0),
 	debug_currentParticle(0),
 	ISWIRE(0),
+	ISWIRE2(0),
 	force_stacking_check(false),
 	emp_decor(0),
 	emp_trigger_count(0),

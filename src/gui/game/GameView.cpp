@@ -2385,6 +2385,7 @@ void GameView::OnDraw()
 		if (type)
 		{
 			int ctype = sample.particle.ctype;
+			int partctype = ctype;
 			int partlife = sample.particle.life;
 			int parttmp = sample.particle.tmp;
 			int partint = 0;
@@ -2440,6 +2441,30 @@ void GameView::OnDraw()
 						sampleInfo << " (" << filtModes[parttmp] << ")";
 					else
 						sampleInfo << " (unknown mode)";
+				}
+				else if (type == PT_PINVIS)
+				{
+					ctype = sample.particle.tmp4 & 0xFF;
+					if (ctype && ctype != type && c->IsValidElement(ctype))
+					{
+						int c_ctype = (sample.cparticle)->ctype;
+						sampleInfo << c->ElementResolve(type, -1) << " with " << c->ElementResolve(ctype, c_ctype);
+						if (ctype != PT_LIFE)
+						{
+							if (ctype == PT_PHOT || ctype == PT_BIZR || ctype == PT_BIZRG || ctype == PT_BIZRS || ctype == PT_FILT || ctype == PT_BRAY)
+							{
+								sampleInfo << " (" << c_ctype << ")";
+							}
+							else
+							{
+								sampleInfo << " (" << c->ElementResolve(c_ctype, -1) << ")";
+							}
+						}
+					}
+					else
+					{
+						sampleInfo << c->ElementResolve(type, partctype) << " (" << c->ElementResolve(partctype, -1) << ")";
+					}
 				}
 				else
 				{
@@ -2501,7 +2526,7 @@ void GameView::OnDraw()
 						break;
 						case 3:
 							sampleInfo << ", Ctype: ";
-							tempvar = ctype;
+							tempvar = partctype;
 						break;
 						case 4:
 							sampleInfo << ", Vx: " << std::fixed << sample.particle.vx;
@@ -2573,6 +2598,16 @@ void GameView::OnDraw()
 				else if (type == PT_E189 && partlife >= 0 && partlife <= 31)
 				{
 					sampleInfo << E189Modes[partlife];
+				}
+				else if (type == PT_PINVIS)
+				{
+					ctype = sample.particle.tmp4 & 0xFF;
+					if (ctype && ctype != type && c->IsValidElement(ctype))
+					{
+						sampleInfo << c->ElementResolve(type, -1) << " with " << c->ElementResolve(ctype, (sample.cparticle)->ctype);
+					}
+					else
+						sampleInfo << c->ElementResolve(type, partctype);
 				}
 				else
 					sampleInfo << c->ElementResolve(type, ctype);

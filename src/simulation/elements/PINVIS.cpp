@@ -30,7 +30,7 @@ Element_PINVIS::Element_PINVIS()
 	HeatConduct = 164;
 	Description = "Powered invisible, invisible to particles while activated.";
 
-	Properties = TYPE_SOLID | PROP_NEUTPASS | PROP_NOSLOWDOWN | PROP_TRANSPARENT | PROP_INVISIBLE | PROP_NODESTRUCT;
+	Properties = TYPE_SOLID | PROP_NEUTPASS | PROP_NOSLOWDOWN | PROP_TRANSPARENT /* | PROP_INVISIBLE */ | PROP_NODESTRUCT;
 
 	LowPressure = IPL;
 	LowPressureTransition = NT;
@@ -48,6 +48,7 @@ Element_PINVIS::Element_PINVIS()
 //#TPT-Directive ElementHeader Element_PINVIS static int update(UPDATE_FUNC_ARGS)
 int Element_PINVIS::update(UPDATE_FUNC_ARGS)
 {
+
 	int r, rx, ry;
 	if (parts[i].life!=10)
 	{
@@ -73,6 +74,16 @@ int Element_PINVIS::update(UPDATE_FUNC_ARGS)
 				}
 	}
 	return 0;
+#if 0
+
+	// wireless2[][0] - whether channel is active on this frame
+	// for wireless2[][1] - see SPRK.cpp and Simulation.cpp
+
+	parts[i].ctype &= 0x0FFF;
+	int PINVIS_channel = parts[i].ctype;
+	parts[i].tmp = 1 & (sim->wireless2[PINVIS_channel >> 5][0] >> (PINVIS_channel & 0x1F));
+	return 0;
+#endif
 }
 
 //#TPT-Directive ElementHeader Element_PINVIS static int graphics(GRAPHICS_FUNC_ARGS)
