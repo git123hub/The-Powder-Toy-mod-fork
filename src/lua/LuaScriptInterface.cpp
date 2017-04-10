@@ -2183,6 +2183,8 @@ void LuaScriptInterface::initStickmanAPI()
 	lua_setfield(l, -2, "SEEK_PARENT");
 	lua_pushinteger(l, 0x00000100);
 	lua_setfield(l, -2, "VACUUM_KILL");
+	lua_pushinteger(l, 0x00000200);
+	lua_setfield(l, -2, "ANTI_GRAV");
 }
 
 playerst* LuaScriptInterface::get_stickman_ptr (int stickmanID)
@@ -2584,9 +2586,10 @@ void LuaScriptInterface::initElementsAPI()
 	SETCONST(l, PROP_NOWAVELENGTHS);
 	SETCONST(l, PROP_INVISIBLE);
 	lua_pushinteger(l, PROP_UNLIMSTACKING);
-	lua_setfield(l, -2, "PROP_UNLIMITED_STACKING");
+	lua_setfield(l, -2, "PROP_UNLIMITED_STACKING"); // 2^27
 	
 	// second property flags
+	SETCONST(l, PROP_ENERGY_PART);
 	// SETCONST(l, PROP_NOSLOWDOWN);
 
 	SETCONST(l, FLAG_STAGNANT);

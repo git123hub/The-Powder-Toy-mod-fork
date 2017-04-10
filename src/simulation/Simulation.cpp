@@ -325,6 +325,7 @@ Snapshot * Simulation::CreateSnapshot()
 	snap->Particles.insert(snap->Particles.begin(), parts, parts+parts_lastActiveIndex+1);
 	snap->PortalParticles.insert(snap->PortalParticles.begin(), &portalp[0][0][0], &portalp[CHANNELS-1][8-1][80-1]);
 	snap->WirelessData.insert(snap->WirelessData.begin(), &wireless[0][0], &wireless[CHANNELS-1][2-1]);
+	snap->Wireless2Data.insert(snap->Wireless2Data.begin(), &wireless2[0][0], &wireless2[CHANNELS-1][16-1]);
 	snap->GravVelocityX.insert(snap->GravVelocityX.begin(), gravx, gravx+((XRES/CELL)*(YRES/CELL)));
 	snap->GravVelocityY.insert(snap->GravVelocityY.begin(), gravy, gravy+((XRES/CELL)*(YRES/CELL)));
 	snap->GravValue.insert(snap->GravValue.begin(), gravp, gravp+((XRES/CELL)*(YRES/CELL)));
@@ -357,6 +358,7 @@ void Simulation::Restore(const Snapshot & snap)
 	RecalcFreeParticles();
 	std::copy(snap.PortalParticles.begin(), snap.PortalParticles.end(), &portalp[0][0][0]);
 	std::copy(snap.WirelessData.begin(), snap.WirelessData.end(), &wireless[0][0]);
+	std::copy(snap.Wireless2Data.begin(), snap.Wireless2Data.end(), &wireless2[0][0]);
 	if (grav->ngrav_enable)
 	{
 		std::copy(snap.GravVelocityX.begin(), snap.GravVelocityX.end(), gravx);
@@ -1933,7 +1935,7 @@ void Simulation::clear_sim(void)
 		memset(fvy, 0, sizeof(fvy));
 	memset(photons, 0, sizeof(photons));
 	memset(wireless, 0, sizeof(wireless));
-	// memset(wireless2, 0, sizeof(wireless2));
+	memset(wireless2, 0, sizeof(wireless2));
 	memset(gol2, 0, sizeof(gol2));
 	memset(portalp, 0, sizeof(portalp));
 	memset(fighters, 0, sizeof(fighters));
@@ -2063,7 +2065,7 @@ void Simulation::init_can_move()
 		can_move[movingType][PT_EMBR] = 0;
 		can_move[PT_EMBR][movingType] = 0;
 		//Energy particles move through VIBR and BVBR, so it can absorb them
-		if (elements[movingType].Properties & TYPE_ENERGY)
+		if (elements[movingType].Properties2 & PROP_ENERGY_PART)
 		{
 			can_move[movingType][PT_VIBR] = 1;
 			can_move[movingType][PT_BVBR] = 1;
@@ -2486,7 +2488,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 	}
 	else if (((r&0xFF)==PT_VIBR || (r&0xFF)==PT_BVBR))
 	{
-		if ((elements[parts[i].type].Properties & TYPE_ENERGY))
+		if ((elements[parts[i].type].Properties2 & PROP_ENERGY_PART))
 		{
 			parts[r>>8].tmp += 20;
 			kill_part(i);
@@ -5566,6 +5568,19 @@ void Simulation::BeforeSim()
 			ISWIRE--;
 		}
 		
+		if (ISWIRE2 > 0)
+		{
+			for (int q = 0; q < (int)(MAX_TEMP-73.15f)/100+2; q++)
+			{
+				for (int qq = 0; qq < 8; qq++)
+				{
+					wireless2[q][2*qq+0] = wireless2[q][2*qq+1];
+					wireless2[q][2*qq+1] = 0;
+				}
+			}
+			ISWIRE2--;
+		}
+		
 #if 0
 		if (ISWIRE2 > 0)
 		{
@@ -5620,7 +5635,9 @@ void Simulation::AfterSim()
 				elements[PT_INVIS].Hardness = INVS_hardness_tmp;
 			}
 		}
-		E189_pause &= ~0x00000035;
+		if (E189_pause & 0x0040)
+			Element_PHOT::ignite_flammable = !Element_PHOT::ignite_flammable;
+		E189_pause &= ~0x00000075;
 	}
 	if (E189_FIGH_pause_check)
 	{
