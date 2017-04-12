@@ -65,7 +65,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 			}
 			else if ((r & 0xFF) == PT_METL || (r & 0xFF) == PT_PSCN || (r & 0xFF) == PT_NSCN)
 			{
-				sim->create_part(-1, rx, ry, PT_SPRK);
+				conductTo (sim, r, rx, ry, parts);
 			}
 		break1c:
 			rtmp &= 0xE0000;
@@ -154,16 +154,19 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 	case 32: // reserved for ARAY / BRAY
 		break;
 	case 6: // heater
-		for (rx=-1; rx<2; rx++)
-			for (ry=-1; ry<2; ry++)
-				if ((!rx != !ry) && BOUNDS_CHECK)
-				{
-					r = pmap[y+ry][x+rx];
-					if (!r)
-						continue;
-					if (sim->elements[r&0xFF].HeatConduct > 0)
-						parts[r>>8].temp = parts[i].temp;
-				}
+		if (!sim->legacy_enable) //if heat sim is on
+		{
+			for (rx=-1; rx<2; rx++)
+				for (ry=-1; ry<2; ry++)
+					if ((!rx != !ry) && BOUNDS_CHECK)
+					{
+						r = pmap[y+ry][x+rx];
+						if (!r)
+							continue;
+						if (sim->elements[r&0xFF].HeatConduct > 0)
+							parts[r>>8].temp = parts[i].temp;
+					}
+		}
 		break;
 	case 8: // acts like VIBR [振金]
 		rr = parts[i].tmp2;
@@ -311,7 +314,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							case 6: sim->E189_pause |=  0x40; break;
 						}
 						if ((rtmp & 0x10) && (rx != ry))
-							Element_E189::InsertText(sim, i, x, y, -rx, -ry);
+							E189_Update::InsertText(sim, i, x, y, -rx, -ry);
 					}
 				}
 		break;
@@ -370,12 +373,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								break;
 							}
 						}
-						if ((rtmp & 0x1) && sim->elements[rt].Properties & PROP_CONDUCTS && parts[r>>8].life == 0)
+						if ((rtmp & 0x1) && sim->elements[rt].Properties & PROP_CONDUCTS)
 						{
-							parts[r>>8].life = 4;
-							// parts[r>>8].cdcolour = parts[r>>8].ctype;
-							parts[r>>8].ctype = rt;
-							sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
+							conductTo (sim, r, x+rx, y+ry, parts);
 						}
 					}
 		}
@@ -422,7 +422,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							r = pmap[y+ry][x+rx];
 							if ((r & 0xFF) == PT_NSCN) /* && parts[r>>8].life == 0 */
-								sim->create_part(-1,x+rx,y+ry,PT_SPRK);
+								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 			}
 
@@ -458,7 +458,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							{
 								r = pmap[y+ry][x+rx];
 								if ((r & 0xFF) == PT_NSCN)
-									sim->create_part(-1,x+rx,y+ry,PT_SPRK);
+									conductTo (sim, r, x+rx, y+ry, parts);
 							}
 					parts[i].tmp--;
 				}
@@ -505,7 +505,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							r = pmap[y+ry][x+rx];
 							if ((r & 0xFF) == PT_NSCN)
-								sim->create_part(-1,x+rx,y+ry,PT_SPRK);
+								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 				parts[i].tmp = 0;
 			}
@@ -587,9 +587,17 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							r = osc_r1[rii], rtmp = parts[i].tmp;
 							if (rtmp & 1 << (rctype & 1))
-								sim->create_part(-1, x+r, y, PT_SPRK);
+							{
+								rx = pmap[y][x+r];
+								if (sim->elements[rx&0xFF].Properties&PROP_CONDUCTS)
+									conductTo(sim, rx, x+r, y, parts);
+							}
 							if (rtmp & 2 >> (rctype & 1))
-								sim->create_part(-1, x, y+r, PT_SPRK);
+							{
+								ry = pmap[y+r][x];
+								if (sim->elements[ry&0xFF].Properties&PROP_CONDUCTS)
+									conductTo(sim, ry, x, y+r, parts);
+							}
 						}
 					}
 				}
@@ -722,10 +730,10 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							rtmp = parts[i].tmp;
 							rrx = pmap[y][x+rx*rii];
 							rry = pmap[y+ry*rii][x];
-							if ((rry & 0xFF) == PT_NSCN && parts[rry>>8].life == 0 && (rtmp & 1))
-								sim->create_part(rry, x, y+ry*rii, PT_SPRK);
-							if ((rrx & 0xFF) == PT_NSCN && parts[rrx>>8].life == 0 && (rtmp & 2))
-								sim->create_part(rrx, x+rx*rii, y, PT_SPRK);
+							if ((rry & 0xFF) == PT_NSCN && (rtmp & 1))
+								conductTo (sim, rry, x, y+ry*rii, parts);
+							if ((rrx & 0xFF) == PT_NSCN && (rtmp & 2))
+								conductTo (sim, rrx, x+rx*rii, y, parts);
 						}
 					}
 				}
@@ -758,9 +766,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								sim->create_part(r>>8,x+rx,y+ry,PT_PSCN);
 							if ((r & 0xFF) == PT_PSCN)
 							{
-								parts[r>>8].life = 4;
-								parts[r>>8].ctype = PT_NSCN;
-								sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
+								conductTo (sim, r, x+rx, y+ry, parts);
 							}
 						}
 			}
@@ -1013,11 +1019,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					{
 						r = pmap[y+ry][x+rx];
 						rt = r & 0xFF;
-						if (((sim->elements[rt].Properties & PROP_CONDUCTS) && !(rt==PT_WATR||rt==PT_SLTW||rt==PT_NTCT||rt==PT_PTCT||rt==PT_INWR)) && parts[r>>8].life == 0)
+						if (((sim->elements[rt].Properties & PROP_CONDUCTS) && !(rt==PT_WATR||rt==PT_SLTW||rt==PT_NTCT||rt==PT_PTCT||rt==PT_INWR)))
 						{
-							parts[r>>8].life = 4;
-							parts[r>>8].ctype = r&0xFF;
-							sim->part_change_type(r>>8, x+rx, y+ry, PT_SPRK);
+							conductTo (sim, r, x+rx, y+ry, parts);
 						}
 					}
 			}
@@ -1151,11 +1155,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					// wireless[][1] - whether channel should be active on next frame
 					if (sim->wireless2[parts[i].tmp][rii] & rr)
 					{
-						if (((r&0xFF)==PT_NSCN||(r&0xFF)==PT_PSCN||(r&0xFF)==PT_INWR)&&parts[r>>8].life==0 && sim->wireless2[parts[i].tmp][rii])
+						if (((r&0xFF)==PT_NSCN||(r&0xFF)==PT_PSCN||(r&0xFF)==PT_INWR) && sim->wireless2[parts[i].tmp][rii])
 						{
-							parts[r>>8].ctype = r&0xFF;
-							sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
-							parts[r>>8].life = 4;
+							conductTo (sim, r, x+rx, y+ry, parts);
 						}
 					}
 					if ((r&0xFF)==PT_SPRK && parts[r>>8].ctype!=PT_NSCN && parts[r>>8].life>=3)
