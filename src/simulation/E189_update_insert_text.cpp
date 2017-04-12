@@ -5,10 +5,12 @@
 
 void E189_Update::InsertText(Simulation *sim, int i, int x, int y, int ix, int iy)
 {
+	Element_E189::useDefaultPart = false;
+	int tab_size = 80;
 	// simulation, index, position (x2), direction (x2)
 	int ct_x = (sim->parts[i].ctype & 0xFFFF), ct_y = ((sim->parts[i].ctype >> 16) & 0xFFFF);
 	int it_x = ct_x, it_r, it_g, it_b, chr_1, esc = 0, pack, bkup, errflag = 0, cfptr;
-	int oldr, oldg, oldb, call_ptr = 0, tmp = 0;
+	int oldr, oldg, oldb, call_ptr = 0, tmp = 0, diff;
 	char __digits[5];
 	short counter = 0;
 	short calls[128][5]; /* dynamic */
@@ -491,6 +493,17 @@ void E189_Update::InsertText(Simulation *sim, int i, int x, int y, int ix, int i
 				pack += ((pack < 15) ? '!' : (pack < 22) ? 43 : (pack < 28) ? 69 : 95);
 				ct_x = E189_Update::AddCharacter(sim, ct_x, ct_y, pack, (it_r << 16) | (it_g << 8) | it_b);
 				break;
+			case 270:
+				Element_E189::useDefaultPart = !Element_E189::useDefaultPart;
+				break;
+			case 271: // horizontal tab
+				diff = (ct_x - it_x) % tab_size;
+				if (diff < 0) diff += tab_size; // can be non-branch
+				ct_x += tab_size - diff;
+				break;
+			case 272: // set horizontal tab size
+				esc = 6;
+				break;
 			default:
 				if (chr_1 >= 0 && chr_1 <= 255)
 					ct_x = E189_Update::AddCharacter(sim, ct_x, ct_y, chr_1, (it_r << 16) | (it_g << 8) | it_b);
@@ -535,6 +548,10 @@ void E189_Update::InsertText(Simulation *sim, int i, int x, int y, int ix, int i
 				ct_x = E189_Update::AddCharacter(sim, ct_x, ct_y, (chr_1 >> 16) & 0xFF, pack);
 				ct_x = E189_Update::AddCharacter(sim, ct_x, ct_y, (chr_1 >> 24) & 0xFF, pack);
 				break;
+			case 6: // set location (relative)
+				tab_size = chr_1;
+				esc = 0;
+				break;
 			}
 		}
 	}
@@ -544,7 +561,9 @@ void E189_Update::InsertText(Simulation *sim, int i, int x, int y, int ix, int i
 
 int E189_Update::AddCharacter(Simulation *sim, int x, int y, int c, int rgb)
 {
-	int i, j, w, bn = 0, ba = 0, _r, xi, yj;
+	static int color_parts = { PT_NONE, PT_TUNG, PT_SHLD, PT_NWHL }; // particle colors
+	
+	int i, j, w, bn = 0, ba = 0, _r, xi, yj, _rt;
 	unsigned char *rp = font_data + font_ptrs[c];
 	w = *(rp++);
 	for (j=0; j<FONT_H; j++)
@@ -559,13 +578,19 @@ int E189_Update::AddCharacter(Simulation *sim, int x, int y, int c, int rgb)
 			{
 				xi = x + i; yj = y + j;
 				_r = sim->pmap[yj][xi];
+				_rt = _r & 0xFF; // particle type
+				_r >>= 8; // particle ID
 				if (_r)
 				{
-					if ((_r&0xFF) == PT_E189 && sim->parts[_r>>8].life == 13)
+					if ((_rt) == PT_SPRK)
+					{
+						_rt = sim->parts[_r].ctype & 0xFF; // reserved by sparked adamantium
+					}
+					if (_rt == PT_E189 && sim->parts[_r].life == 13)
 					{
 						if (~ba & 3) // ba & 3 != 3, also only ba == 1 or ba == 2
 						{
-							int k = sim->parts[_r>>8].ctype;
+							int k = sim->parts[_r].ctype;
 							int olda = (k >> 24) & 0xFF;
 							int oldr, oldg, oldb;
 							if (olda == 255)
@@ -584,17 +609,25 @@ int E189_Update::AddCharacter(Simulation *sim, int x, int y, int c, int rgb)
 							int newr = (olda * ((rgb >> 16) & 0xFF) + (0xFF - olda) * oldr) & ~0xFF;
 							int newg = (olda * ((rgb >> 8) & 0xFF) + (0xFF - olda) * oldg) & 0xFF00;
 							int newb = (olda * (rgb & 0xFF) + (0xFF - olda) * oldb) >> 8;
-							sim->parts[_r>>8].ctype = 0xFF000000 | newr << 8 | newg | newb;
+							sim->parts[_r].ctype = 0xFF000000 | newr << 8 | newg | newb;
 						}
 						else
 							sim->parts[_r].ctype = 0xFF000000 | (rgb & 0x00FFFFFF);
 					}
-					else if (!(sim->elements[_r>>8].Properties & PROP_NODESTRUCT))
-						_r = sim->create_part(_r>>8, xi, yj, PT_E189, 13);
+					else if (!(sim->elements[_rt].Properties & PROP_NODESTRUCT))
+					{
+						goto _E189_recreatePixel;
+					}
 				}
 				else
-					_r = sim->create_part(-1, xi, yj, PT_E189, 13); // type = 65549 (0x0001000D)
-				if (_r >= 0)
+				{
+				_E189_recreatePixel:
+					if (!Element_E189::useDefaultPart)
+						_r = sim->create_part(-1, xi, yj, PT_E189, 13); // type = 65549 (0x0001000D)
+					else
+						_r = sim->create_part(-1, xi, yj, color_parts[ba & 3]);
+				}
+				if (!Element_E189::useDefaultPart && _r >= 0)
 				{
 					sim->parts[_r].ctype = ((ba & 3) * 0x55000000) | (rgb & 0x00FFFFFF);
 				}
