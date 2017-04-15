@@ -13,8 +13,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 	static int tron_ry[4] = { 0,-1, 0, 1};
 	static int osc_r1 [4] = { 1,-1, 2,-2};
 	int rx, ry, ttan = 0, rlife = parts[i].life, direction, r, ri, rtmp, rctype;
-	int rr, rndstore, trade, transfer, rt, rii, rrx, rry, nx, ny;
+	int rr, rndstore, trade, transfer, rt, rii, rrx, rry, nx, ny, pavg;
 	float rvx, rvy, rdif;
+	int docontinue;
 	rtmp = parts[i].tmp;
 	
 	switch (rlife)
@@ -355,12 +356,12 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						rtmp = parts[i].tmp;
 						if (!r)
 							continue;
-						if (rt == PT_SPRK && parts[r>>8].life == 3)
+						if (rt == PT_SPRK && ( !(rtmp & 8) == !(sim->elements[parts[r>>8].ctype].Properties & PROP_INSULATED) ) && parts[r>>8].life == 3)
 						{
 							switch (rtmp & 0x3)
 							{
-							case 0: parts[i].tmp = 1; break;
-							case 1: parts[i].tmp = 0; break;
+							case 0: case 1:
+								parts[i].tmp ^= 1; break;
 							case 2:
 								rr = pmap[y-ry][x-rx];
 								if ((rr & 0xFF) == PT_E189)
@@ -374,7 +375,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								break;
 							}
 						}
-						if ((rtmp & 0x1) && sim->elements[rt].Properties & PROP_CONDUCTS)
+						if ((rtmp & 0x1) && (sim->elements[rt].Properties & (PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
 						{
 							conductTo (sim, r, x+rx, y+ry, parts);
 						}
@@ -826,6 +827,8 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							nx = x + rx; ny = y + ry;
 							r = pmap[ny][nx];
+							if (!r)
+								continue;
 							if ((r & 0xFF) == PT_FILT)
 							{
 								rrx = parts[r>>8].ctype;
@@ -855,6 +858,24 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 									parts[r>>8].ctype = rrx;
 									r = pmap[ny += ry][nx += rx];
 								}
+								break;
+							}
+							else if ((r & 0xFF) == PT_CRAY)
+							{
+								for (;;)
+								{
+									r = pmap[ny += ry][nx += rx];
+									if (!r)
+									{
+										sim->create_part(-1, nx, ny, PT_INWR);
+										break;
+									}
+									else if ((r&0xFF) == PT_INWR)
+										sim->kill_part(r>>8);
+									else
+										break;
+								}
+								break;
 							}
 						}
 			}
@@ -868,6 +889,8 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							nx = x + rx; ny = y + ry;
 							r = pmap[ny][nx];
+							if (!r)
+								continue;
 							if ((r & 0xFF) == PT_FILT)
 							{
 								rrx = parts[r>>8].ctype;
@@ -921,9 +944,51 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					if (BOUNDS_CHECK && (rx || ry))
 					{
 						r = pmap[y+ry][x+rx];
-						if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+						if (!r) continue;
+						pavg = sim->parts_avg(i,r>>8,PT_INSL);
+						if ((pavg != PT_INSL && pavg != PT_INDI) && (r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
 						{
 							parts[i].tmp = parts[r>>8].ctype;
+							parts[i].tmp2 = 2;
+							goto break1a;
+						}
+					}
+			break;
+		case 19: // universal conducts?
+			if (parts[i].tmp2 == 1)
+			{
+				for (rx = -1; rx < 2; rx++)
+					for (ry = -1; ry < 2; ry++)
+						if (BOUNDS_CHECK && (!rx || !ry))
+						{
+							r = pmap[y+ry][x+rx];
+							if (!r)
+								continue;
+							pavg = sim->parts_avg(i,r>>8,PT_INSL);
+							if (pavg != PT_INSL && pavg != PT_INDI)
+							{
+								if ((r & 0xFF) == PT_INST)
+								{
+									sim->FloodINST(x+rx,y+ry,PT_SPRK,PT_INST);
+								}
+								else if (sim->elements[r].Properties & PROP_CONDUCTS)
+								{
+									conductTo (sim, r, x+rx, y+ry, parts);
+								}
+							}
+						}
+			}
+			goto continue1c;
+		continue1c:
+			for (rx = -2; rx <= 2; rx++)
+				for (ry = -2; ry <= 2; ry++)
+					if (BOUNDS_CHECK && (!rx || !ry))
+					{
+						r = pmap[y+ry][x+rx];
+						if (!r) continue;
+						pavg = sim->parts_avg(i,r>>8,PT_INSL);
+						if ((pavg != PT_INSL && pavg != PT_INDI) && (r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+						{
 							parts[i].tmp2 = 2;
 							goto break1a;
 						}
@@ -1135,7 +1200,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					{
 						r = pmap[y+ry][x+rx];
 						rt = r & 0xFF;
-						if (((sim->elements[rt].Properties & PROP_CONDUCTS) && !(rt==PT_WATR||rt==PT_SLTW||rt==PT_NTCT||rt==PT_PTCT||rt==PT_INWR)))
+						if ((sim->elements[rt].Properties & (PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
 						{
 							conductTo (sim, r, x+rx, y+ry, parts);
 						}
@@ -1282,6 +1347,60 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						sim->ISWIRE2 = 2;
 					}
 				}
+		break;
+	case 34: // Sub-frame filter incrementer
+		for (rx = -1; rx < 2; rx++)
+			for (ry = -1; ry < 2; ry++)
+				if (BOUNDS_CHECK && (rx || ry))
+				{
+					nx = x + rx; ny = y + ry;
+					r = pmap[ny][nx];
+					if ((r & 0xFF) == PT_FILT)
+					{
+						rr = parts[r>>8].ctype + parts[i].ctype;
+						rr &= 0x1FFFFFFF;
+						rr |= 0x20000000;
+						while (BOUNDS_CHECK && (
+							(r & 0xFF) == PT_FILT
+						)) // check another FILT
+						{
+							parts[r>>8].ctype = rr;
+							r = pmap[ny += ry][nx += rx];
+						}
+					}
+				}
+		break;
+	case 35:
+		nx = x; ny = y;
+		rrx = parts[i].ctype;
+		for (rr = 0; rr < 4; rr++)
+			if (BOUNDS_CHECK)
+			{
+				rx = tron_rx[rr];
+				ry = tron_ry[rr];
+				r = pmap[y-ry][x-rx];
+				if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+				{
+					rry = parts[r>>8].ctype == PT_INST ? 1 : 0;
+					docontinue = 1;
+					do
+					{
+						nx += rx; ny += ry;
+						if (!sim->InBounds(nx, ny))
+							break;
+						r = pmap[ny][nx];
+						if (!r || (r&0xFF) == PT_INWR || (r&0xFF) == PT_SPRK && parts[r>>8].ctype == PT_INWR) // if it's empty or insulated wire
+							continue;
+						if ((r&0xFF) == PT_CRAY || (r&0xFF) == PT_DRAY || (r&0xFF) == PT_E189 && parts[r>>8].life == 35)
+						{
+							parts[r>>8].ctype = rrx;
+						}
+						else if ((r&0xFF) == PT_INSL || (r&0xFF) == PT_INDI)
+							break;
+						docontinue = rry;
+					} while (docontinue);
+				}
+			}
 		break;
 	}
 	
