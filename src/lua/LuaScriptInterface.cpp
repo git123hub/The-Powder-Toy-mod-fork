@@ -697,6 +697,7 @@ void LuaScriptInterface::initSimulationAPI()
 		{"partNeighbors", simulation_partNeighbours},
 		{"partChangeType", simulation_partChangeType},
 		{"partCreate", simulation_partCreate},
+		{"partCreate2", simulation_partCreate2},
 		{"partProperty", simulation_partProperty},
 		{"partPosition", simulation_partPosition},
 		{"partID", simulation_partID},
@@ -914,6 +915,18 @@ int LuaScriptInterface::simulation_partCreate(lua_State * l)
 		type = type&0xFF;
 	}
 	lua_pushinteger(l, luacon_sim->create_part(newID, lua_tointeger(l, 2), lua_tointeger(l, 3), type, v));
+	return 1;
+}
+
+int LuaScriptInterface::simulation_partCreate2(lua_State * l)
+{
+	int newID = lua_tointeger(l, 1);
+	if(newID >= NPART || newID < -3)
+	{
+		lua_pushinteger(l, -1);
+		return 1;
+	}
+	lua_pushinteger(l, luacon_sim->create_part(newID, lua_tointeger(l, 2), lua_tointeger(l, 3), lua_tointeger(l, 4), lua_tointeger(l, 5)));
 	return 1;
 }
 
@@ -2581,10 +2594,7 @@ void LuaScriptInterface::initElementsAPI()
 	SETCONST(l, PROP_NOCTYPEDRAW);
 	SETCONST(l, PROP_NOSLOWDOWN);
 	SETCONST(l, PROP_TRANSPARENT);
-	SETCONST(l, PROP_NODESTRUCT);
-	SETCONST(l, PROP_CLONE);
-	SETCONST(l, PROP_NOWAVELENGTHS);
-	SETCONST(l, PROP_INVISIBLE);
+
 	lua_pushinteger(l, PROP_UNLIMSTACKING);
 	lua_setfield(l, -2, "PROP_UNLIMITED_STACKING"); // 2^27
 	SETCONST(l, PROP_INSULATED);
@@ -2592,7 +2602,12 @@ void LuaScriptInterface::initElementsAPI()
 	// second property flags
 	SETCONST(l, PROP_ENERGY_PART);
 	SETCONST(l, PROP_ELEC_HEATING);
+	SETCONST(l, PROP_NOWAVELENGTHS);
+	SETCONST(l, PROP_NODESTRUCT);
+	SETCONST(l, PROP_CLONE);
+	// SETCONST(l, PROP_DRAWONCTYPE);
 	// SETCONST(l, PROP_NOSLOWDOWN);
+	SETCONST(l, PROP_INVISIBLE);
 
 	SETCONST(l, FLAG_STAGNANT);
 	SETCONST(l, FLAG_SKIPMOVE);

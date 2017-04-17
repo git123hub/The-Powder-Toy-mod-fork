@@ -1,7 +1,9 @@
 //#include <cstdlib>
 #include <cmath>
 #include <math.h>
-#if !defined(_MSC_VER)
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
 #include <strings.h>
 #endif
 #include "Config.h"
@@ -1769,6 +1771,26 @@ inline int Simulation::is_wire_off(int x, int y)
 	return (bmap[y][x]==WL_DETECT || bmap[y][x]==WL_EWALL || bmap[y][x]==WL_ALLOWLIQUID || bmap[y][x]==WL_WALLELEC || bmap[y][x]==WL_ALLOWALLELEC || bmap[y][x]==WL_EHOLE) && emap[y][x]<8;
 }
 
+// implement __builtin_ctz and __builtin_clz on msvc
+#ifdef _MSC_VER
+unsigned msvc_ctz(unsigned a)
+{
+	unsigned long i;
+	_BitScanForward(&i, a);
+	return i;
+}
+
+unsigned msvc_clz(unsigned a)
+{
+	unsigned long i;
+	_BitScanReverse(&i, a);
+	return 31 - i;
+}
+
+#define __builtin_ctz msvc_ctz
+#define __builtin_clz msvc_clz
+#endif
+
 int Simulation::get_wavelength_bin(int *wm)
 {
 	int i, w0, wM, r;
@@ -1776,11 +1798,13 @@ int Simulation::get_wavelength_bin(int *wm)
 	if (!(*wm & 0x3FFFFFFF))
 		return -1;
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(_MSVC_VER)
 	w0 = __builtin_ctz(*wm | 0xC0000000);
 	wM = 31 - __builtin_clz(*wm & 0x3FFFFFFF);
 #else
-	for (i=0; i<30; i++)
+	w0 = 30;
+	wM = 0;
+	for (i = 0; i < 30; i++)
 		if (*wm & (1<<i))
 		{
 			if (i < w0)
@@ -2101,7 +2125,7 @@ void Simulation::init_can_move()
 			can_move[PT_PROT][destinationType] = 2;
 			can_move[PT_GRVT][destinationType] = 2;
 		}
-		if (elements[destinationType].Properties & (PROP_NODESTRUCT|PROP_CLONE))
+		if (elements[destinationType].Properties2 & (PROP_NODESTRUCT|PROP_CLONE))
 			can_move[PT_DEST][destinationType] = 0;
 	}
 	
@@ -2112,6 +2136,7 @@ void Simulation::init_can_move()
 	// can_move[PT_DEST][PT_PCLN] = 0;
 	// can_move[PT_DEST][PT_BCLN] = 0;
 	// can_move[PT_DEST][PT_PBCN] = 0;
+	can_move[PT_DEST][PT_SPRK] = 3;
 
 	can_move[PT_NEUT][PT_INVIS] = 2;
 	can_move[PT_ELEC][PT_LCRY] = 2;
@@ -2304,6 +2329,13 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				return 2;
 			else
 				return 0;
+		}
+		else if (pt == PT_DEST && (r&0xFF) == PT_SPRK)
+		{
+			if (elements[parts[r>>8].ctype].Properties2 & PROP_NODESTRUCT)
+				return 0;
+			else
+				return 1;
 		}
 	}
 	if (bmap[ny/CELL][nx/CELL])
@@ -3075,9 +3107,9 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 				{
 					retcode = -1;
 				drawOnE189Ctype:
-					parts[pmap[y][x]>>8].ctype = t;
+					parts[E189ID].ctype = t;
 					if (t == PT_LIFE && v >= 0 && v < NGOL)
-						parts[pmap[y][x]>>8].ctype |= v << 8;
+						parts[E189ID].ctype |= v << 8;
 					return retcode;
 				}
 			}
@@ -4528,7 +4560,7 @@ killed:
 						continue;
 					}
 
-					if (!(elements[t].Properties & PROP_NOWAVELENGTHS))
+					if (!(elements[t].Properties2 & PROP_NOWAVELENGTHS))
 					{
 						// this should be replaced with a particle type attribute ("photwl" or something)
 						parts[i].ctype &= elements[r&0xFF].PhotonReflectWavelengths;
@@ -5291,7 +5323,7 @@ void Simulation::RecalcFreeParticles()
 				{
 					// Particles are sometimes allowed to go inside INVS and FILT
 					// To make particles collide correctly when inside these elements, these elements must not overwrite an existing pmap entry from particles inside them
-					if (!pmap[y][x] || ( !(elements[t].Properties & PROP_INVISIBLE) && !(tt = (pmap[y][x]&0xFF) == PT_PINVIS) ))
+					if (!pmap[y][x] || ( !(elements[t].Properties2 & PROP_INVISIBLE) && !(tt = (pmap[y][x]&0xFF) == PT_PINVIS) ))
 						pmap[y][x] = t|(i<<8);
 					else if (tt)
 						parts[pmap[y][x]>>8].tmp4 = t|(i<<8);
@@ -5701,8 +5733,8 @@ void Simulation::AfterSim()
 			elements[PT_PHOT].Properties2 ^= PROP_NOSLOWDOWN; // toggle PHOT's slowed down flag
 		if (E189_pause & 0x0020)
 		{
-			elements[PT_INVIS].Properties ^= PROP_NODESTRUCT; // toggle INVS's indestructibility
-			if (elements[PT_INVIS].Properties & PROP_NODESTRUCT)
+			elements[PT_INVIS].Properties2 ^= PROP_NODESTRUCT; // toggle INVS's indestructibility
+			if (elements[PT_INVIS].Properties2 & PROP_NODESTRUCT)
 			{
 				INVS_hardness_tmp = elements[PT_INVIS].Hardness;
 				elements[PT_INVIS].Hardness = 0;

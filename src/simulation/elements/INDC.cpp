@@ -1,17 +1,17 @@
 #include "simulation/Elements.h"
-//#TPT-Directive ElementClass Element_DMND PT_DMND 28
-Element_DMND::Element_DMND()
+//#TPT-Directive ElementClass Element_INDC PT_INDC 193
+Element_INDC::Element_INDC()
 {
-	Identifier = "DEFAULT_PT_DMND";
-	Name = "DMND";
-	Colour = PIXPACK(0xCCFFFF);
+	Identifier = "DEFAULT_PT_INDC";
+	Name = "INDC";
+	Colour = PIXPACK(0x6F6F8F);
 	MenuVisible = 1;
-	MenuSection = SC_SPECIAL;
+	MenuSection = SC_ELEC;
 	Enabled = 1;
 
 	Advection = 0.0f;
 	AirDrag = 0.00f * CFDS;
-	AirLoss = 0.90f;
+	AirLoss = 0.95f;
 	Loss = 0.00f;
 	Collision = 0.0f;
 	Gravity = 0.0f;
@@ -27,10 +27,10 @@ Element_DMND::Element_DMND()
 	Weight = 100;
 
 	Temperature = R_TEMP+0.0f	+273.15f;
-	HeatConduct = 186;
-	Description = "Diamond. Indestructible.";
+	HeatConduct = 0;
+	Description = "Indestructible Conductor.";
 
-	Properties = TYPE_SOLID;
+	Properties = TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC;
 	Properties2 = PROP_NODESTRUCT;
 
 	LowPressure = IPL;
@@ -45,4 +45,4 @@ Element_DMND::Element_DMND()
 	Update = NULL;
 }
 
-Element_DMND::~Element_DMND() {}
+Element_INDC::~Element_INDC() {}

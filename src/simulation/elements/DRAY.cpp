@@ -31,6 +31,7 @@ Element_DRAY::Element_DRAY()
 	Description = "Duplicator ray. Replicates a line of particles in front of it.";
 
 	Properties = TYPE_SOLID|PROP_LIFE_DEC;
+	Properties2 = PROP_DRAWONCTYPE;
 
 	LowPressure = IPL;
 	LowPressureTransition = NT;
@@ -138,7 +139,7 @@ int Element_DRAY::update(UPDATE_FUNC_ARGS)
 								else
 								{
 									int r2 = pmap[yCopyTo][xCopyTo];
-									if (r2 && !(sim->elements[r2 & 0xFF].Properties & PROP_NODESTRUCT))
+									if (r2 && !(sim->elements[r2 & 0xFF].Properties2 & PROP_NODESTRUCT))
 										sim->kill_part(r2>>8);
 								}
 							}

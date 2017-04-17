@@ -277,7 +277,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 					r = pmap[y+ry][x+rx];
 					rt = r & 0xFF;
-					if (!r || (sim->elements[rt].Properties & PROP_NODESTRUCT) || rt == PT_VIBR || rt == PT_BVBR || rt == PT_WARP)
+					if (!r || (sim->elements[rt].Properties2 & PROP_NODESTRUCT) || rt == PT_VIBR || rt == PT_BVBR || rt == PT_WARP || rt == PT_SPRK)
 						continue;
 					if (rt == PT_E189)
 					{
@@ -411,12 +411,19 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		}
 		break;
 	case 16:
-		int PSCNCount;
+		int conductive;
 		switch (rctype = parts[i].ctype)
 		{
 		case 0: // logic gate
-
-			if (!(parts[i].tmp & 4) == (parts[i].tmp2 > 0))
+			rii = rtmp & ~0xFF;
+			switch (rtmp & 3)
+			{
+				case 0: conductive =  rii ||  parts[i].tmp2; break;
+				case 1: conductive =  rii &&  parts[i].tmp2; break;
+				case 2: conductive = !rii &&  parts[i].tmp2; break;
+				case 3: conductive = !rii != !parts[i].tmp2; break;
+			}
+			if (!(rtmp & 4) == conductive)
 			{
 				for (rx = -2; rx <= 2; rx++)
 					for (ry = -2; ry <= 2; ry++)
@@ -427,27 +434,30 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 			}
+			parts[i].tmp -= (rii > 0 ? 0x100 : 0);
 
-			PSCNCount = 0;
-			for (rx = -2; rx <= 2; rx++)
-				for (ry = -2; ry <= 2; ry++)
-					if (BOUNDS_CHECK && (rx || ry))
-					{
-						r = pmap[y+ry][x+rx];
-						if ((r & 0xFF) == PT_SPRK && parts[r>>8].ctype == PT_PSCN && parts[r>>8].life == 3)
-							PSCNCount ++;
-						rr = ((r>>8) > i) ? (parts[r>>8].tmp) : (parts[r>>8].tmp2);
-						if ((r & 0xFF) == PT_E189 && parts[r>>8].life == 19 && !rr)
-							PSCNCount ++;
-					}
-			rtmp = parts[i].tmp;
-			if ((rtmp & 3) != 3)
+			// PSCNCount = 0;
 			{
-				if (PSCNCount > (rtmp & 3)) // N-input logic gate
-					parts[i].tmp2 = 9;
+				for (rx = -2; rx <= 2; rx++)
+					for (ry = -2; ry <= 2; ry++)
+						if (BOUNDS_CHECK && (rx || ry))
+						{
+							r = pmap[y+ry][x+rx];
+							if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+							{
+								if (parts[r>>8].ctype == PT_PSCN)
+								{
+									// PSCNCount ++;
+									parts[i].tmp2 = 8 + 1;
+								}
+								else if (parts[r>>8].ctype == PT_BMTL)
+								{
+									// INWRCount ++;
+									parts[i].tmp |= (8 * 0x100);
+								}
+							}
+						}
 			}
-			else if (PSCNCount & 1)
-				parts[i].tmp2 = 9; // XOR gate
 			break;
 		case 1: // conduct->insulate counter
 			if (parts[i].tmp)
@@ -648,25 +658,35 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					rx = tron_rx[rr];
 					ry = tron_ry[rr];
 					r = pmap[y+ry][x+rx];
-					if ((r & 0xFF) == PT_SWCH)
+					switch (r & 0xFF)
 					{
+					case PT_SPRK:
+						if (!rt && parts[r>>8].ctype == PT_SWCH)
+						{
+							parts[r>>8].life = 9;
+							parts[r>>8].ctype = PT_NONE;
+							sim->part_change_type(r>>8, rx, ry, PT_SWCH);
+						}
+						break;
+					case PT_SWCH:
+					case PT_HSWC:
 						rtmp = parts[r>>8].life;
 						if (rt)
 							parts[r>>8].life = 10;
 						else if (rtmp >= 10)
 							parts[r>>8].life = 9;
-					}
-					else if ((r & 0xFF) == PT_LCRY)
-					{
+						break;
+					case PT_LCRY:
 						rtmp = parts[r>>8].tmp;
 						if (rt && rtmp == 0)
 							parts[r>>8].tmp = 2;
 						if (!rt && rtmp == 3)
 							parts[r>>8].tmp = 1;
+						break;
 					}
 				}
 			break;
-		case 10:
+		case 10: // with E189's life=17 (and life=25)
 			for (rr = 0; rr < 4; rr++)
 				if (BOUNDS_CHECK)
 				{
@@ -682,7 +702,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								rrx = tron_rx[rr];
 								rry = tron_ry[rr];
 								ri = pmap[y+rry][x+rrx];
-								if ((ri & 0xFF) == PT_E189 && parts[ri>>8].life == 17)
+								if ((ri & 0xFF) == PT_E189 && parts[ri>>8].life == 17) // using "PHOT diode"
 								{
 									rii = sim->create_part(-1, x-rx, y-ry, PT_E189, 24);
 									rtmp = (direction << 2) | rr;
@@ -768,7 +788,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								sim->create_part(r>>8,x+rx,y+ry,PT_PSCN);
 							if ((r & 0xFF) == PT_PSCN)
 							{
-								conductTo (sim, r, x+rx, y+ry, parts);
+								parts[r>>8].ctype = PT_NSCN; // for different type
+								sim->part_change_type(r>>8, x, y, PT_SPRK);
+								parts[r>>8].life = 4;
 							}
 						}
 			}
@@ -1027,10 +1049,10 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							goto break3;
 						if ((rctype & 0xFF) != PT_LIGH || !(rand() & 7))
 						{
-							rx = rand()%3-1;
-							ry = rand()%3-1;
-							int np = sim->create_part(-1, x+rx, y+ry, rctype & 0xFF, rctype >> 8);
-							if (np >= 0) { parts[np].vx = rx; parts[np].vy = ry; }
+							// rx = rand()%3-1;
+							// ry = rand()%3-1;
+							int np = sim->create_part(-1, x-rx, y-ry, rctype & 0xFF, rctype >> 8);
+							if (np >= 0) { parts[np].vx = -rx; parts[np].vy = -ry; }
 						}
 						goto break3;
 					}
@@ -1391,7 +1413,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						r = pmap[ny][nx];
 						if (!r || (r&0xFF) == PT_INWR || (r&0xFF) == PT_SPRK && parts[r>>8].ctype == PT_INWR) // if it's empty or insulated wire
 							continue;
-						if ((r&0xFF) == PT_CRAY || (r&0xFF) == PT_DRAY || (r&0xFF) == PT_E189 && parts[r>>8].life == 35)
+						if ((sim->elements[r&0xFF].Properties2 & PROP_DRAWONCTYPE) || (r&0xFF) == PT_E189 && parts[r>>8].life == 35)
 						{
 							parts[r>>8].ctype = rrx;
 						}
