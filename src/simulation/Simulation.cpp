@@ -2257,7 +2257,13 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 		}
 		else if ((r&0xFF) == PT_INVIS)
 		{
-			if (pv[ny/CELL][nx/CELL]>4.0f || pv[ny/CELL][nx/CELL]<-4.0f)
+			float pressureResistance = 0.0f;
+			if (parts[r>>8].tmp > 0)
+				pressureResistance = (float)parts[r>>8].tmp;
+			else
+				pressureResistance = 4.0f;
+
+			if (pv[ny/CELL][nx/CELL] < -pressureResistance || pv[ny/CELL][nx/CELL] > pressureResistance)
 				result = 2;
 			else
 				result = 0;
@@ -2483,7 +2489,12 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				switch (r&0xFF)
 				{
 				case PT_INVIS:
-					if (pv[ny/CELL][nx/CELL]<=4.0f && pv[ny/CELL][nx/CELL]>=-4.0f)
+					float pressureResistance = 0.0f;
+					if (parts[r>>8].tmp > 0)
+						pressureResistance = (float)parts[r>>8].tmp;
+					else
+						pressureResistance = 4.0f;
+					if (pv[ny/CELL][nx/CELL] >= -pressureResistance && pv[ny/CELL][nx/CELL] <= pressureResistance)
 					{
 						part_change_type(i,x,y,PT_NEUT);
 						parts[i].ctype = 0;
@@ -5534,8 +5545,8 @@ void Simulation::BeforeSim()
 			{
 				if (emap[y][x])
 					emap[y][x] --;
-				air->bmap_blockair[y][x] = (bmap[y][x]==WL_WALL || bmap[y][x]==WL_BREAKABLE_WALL || bmap[y][x]==WL_WALLELEC || bmap[y][x]==WL_BLOCKAIR || (bmap[y][x]==WL_EWALL && !emap[y][x]));
-				air->bmap_blockairh[y][x] = (bmap[y][x]==WL_WALL || bmap[y][x]==WL_BREAKABLE_WALL || bmap[y][x]==WL_WALLELEC || bmap[y][x]==WL_BLOCKAIR || bmap[y][x]==WL_GRAV || (bmap[y][x]==WL_EWALL && !emap[y][x])) ? 0x8:0;
+				air->bmap_blockair[y][x] = (bmap[y][x]==WL_WALL || /* bmap[y][x]==WL_BREAKABLE_WALL || */ bmap[y][x]==WL_WALLELEC || bmap[y][x]==WL_BLOCKAIR || (bmap[y][x]==WL_EWALL && !emap[y][x]));
+				air->bmap_blockairh[y][x] = (bmap[y][x]==WL_WALL || /* bmap[y][x]==WL_BREAKABLE_WALL || */ bmap[y][x]==WL_WALLELEC || bmap[y][x]==WL_BLOCKAIR || bmap[y][x]==WL_GRAV || (bmap[y][x]==WL_EWALL && !emap[y][x])) ? 0x8:0;
 			}
 		}
 		
@@ -5551,7 +5562,7 @@ void Simulation::BeforeSim()
 					if (bmap[y][x] == WL_BREAKABLE_WALL)
 					{
 						tmp_count--;
-						if (pv[y][x] > 4.0f || pv[y][x] < -4.0f)
+						if (pv[y][x] > sim_max_pressure || pv[y][x] < -sim_max_pressure)
 						{
 							breakable_wall_count--;
 							bmap[y][x] = 0;
@@ -5922,6 +5933,8 @@ Simulation::Simulation():
 
 	player.comm = 0;
 	player2.comm = 0;
+	
+	sim_max_pressure = 4.0f; // on breakable wall
 
 	init_can_move();
 	clear_sim();
