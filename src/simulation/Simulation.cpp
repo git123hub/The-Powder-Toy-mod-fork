@@ -207,6 +207,9 @@ int Simulation::Load(int fullX, int fullY, GameSave * save)
 				fvx[saveBlockY+blockY][saveBlockX+blockX] = save->fanVelX[saveBlockY][saveBlockX];
 				fvy[saveBlockY+blockY][saveBlockX+blockX] = save->fanVelY[saveBlockY][saveBlockX];
 			}
+			pv[saveBlockY+blockY][saveBlockX+blockX] = save->pressure[saveBlockY][saveBlockX];
+			vx[saveBlockY+blockY][saveBlockX+blockX] = save->velocityX[saveBlockY][saveBlockX];
+			vy[saveBlockY+blockY][saveBlockX+blockX] = save->velocityY[saveBlockY][saveBlockX];
 		}
 	}
 
@@ -304,6 +307,9 @@ GameSave * Simulation::Save(int fullX, int fullY, int fullX2, int fullY2)
 				newSave->fanVelX[saveBlockY][saveBlockX] = fvx[saveBlockY+blockY][saveBlockX+blockX];
 				newSave->fanVelY[saveBlockY][saveBlockX] = fvy[saveBlockY+blockY][saveBlockX+blockX];
 			}
+			newSave->pressure[saveBlockY][saveBlockX] = pv[saveBlockY+blockY][saveBlockX+blockX];
+			newSave->velocityX[saveBlockY][saveBlockX] = vx[saveBlockY+blockY][saveBlockX+blockX];
+			newSave->velocityY[saveBlockY][saveBlockX] = vy[saveBlockY+blockY][saveBlockX+blockX];
 		}
 	}
 
@@ -322,6 +328,7 @@ void Simulation::SaveSimOptions(GameSave * gameSave)
 	gameSave->gravityEnable = grav->ngrav_enable;
 	gameSave->aheatEnable = aheat_enable;
 	gameSave->sextraLoopsCA = extraLoopsCA;
+	gameSave->sim_max_pressure = sim_max_pressure;
 	// gameSave->PINV_wireless = wireless2;
 }
 
