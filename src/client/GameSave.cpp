@@ -1316,6 +1316,7 @@ void GameSave::readOPS(char * data, int dataLength)
 								particles[newIndex].tmp = 0;
 							}
 						}
+						break;
 					case 185: // already used by "E185" and "LSNS"
 						if (my_mod_id_2 != 1017640403)
 						{
