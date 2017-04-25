@@ -210,6 +210,8 @@ int Simulation::Load(int fullX, int fullY, GameSave * save)
 			pv[saveBlockY+blockY][saveBlockX+blockX] = save->pressure[saveBlockY][saveBlockX];
 			vx[saveBlockY+blockY][saveBlockX+blockX] = save->velocityX[saveBlockY][saveBlockX];
 			vy[saveBlockY+blockY][saveBlockX+blockX] = save->velocityY[saveBlockY][saveBlockX];
+			if (save->hasAmbientHeat)
+				hv[saveBlockY+blockY][saveBlockX+blockX] = save->ambientHeat[saveBlockY][saveBlockX];
 		}
 	}
 
@@ -310,9 +312,11 @@ GameSave * Simulation::Save(int fullX, int fullY, int fullX2, int fullY2)
 			newSave->pressure[saveBlockY][saveBlockX] = pv[saveBlockY+blockY][saveBlockX+blockX];
 			newSave->velocityX[saveBlockY][saveBlockX] = vx[saveBlockY+blockY][saveBlockX+blockX];
 			newSave->velocityY[saveBlockY][saveBlockX] = vy[saveBlockY+blockY][saveBlockX+blockX];
+			newSave->ambientHeat[saveBlockY][saveBlockX] = hv[saveBlockY+blockY][saveBlockX+blockX];
 		}
 	}
 
+	SaveSimOptions(newSave);
 	return newSave;
 }
 
@@ -2268,7 +2272,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 			if (parts[r>>8].tmp > 0)
 				pressureResistance = (float)parts[r>>8].tmp;
 			else
-				pressureResistance = 4.0f;
+				pressureResistance = sim_max_pressure;
 
 			if (pv[ny/CELL][nx/CELL] < -pressureResistance || pv[ny/CELL][nx/CELL] > pressureResistance)
 				result = 2;
@@ -2501,7 +2505,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 					if (parts[r>>8].tmp > 0)
 						pressureResistance = (float)parts[r>>8].tmp;
 					else
-						pressureResistance = 4.0f;
+						pressureResistance = sim_max_pressure;
 					if (pv[ny/CELL][nx/CELL] >= -pressureResistance && pv[ny/CELL][nx/CELL] <= pressureResistance)
 					{
 						part_change_type(i,x,y,PT_NEUT);
