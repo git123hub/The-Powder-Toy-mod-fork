@@ -1179,7 +1179,6 @@ void GameController::OpenLocalSaveWindow(bool asCurrent)
 	}
 	else
 	{
-		sim->SaveSimOptions(gameSave);
 		gameSave->paused = gameModel->GetPaused();
 
 		SaveFile tempSave("");
@@ -1388,7 +1387,6 @@ void GameController::OpenSaveWindow()
 		}
 		else
 		{
-			sim->SaveSimOptions(gameSave);
 			gameSave->paused = gameModel->GetPaused();
 
 			if(gameModel->GetSave())
@@ -1437,7 +1435,6 @@ void GameController::SaveAsCurrent()
 		else
 		{
 			gameSave->paused = gameModel->GetPaused();
-			sim->SaveSimOptions(gameSave);
 
 			if(gameModel->GetSave())
 			{
@@ -1514,9 +1511,9 @@ std::string GameController::ElementResolve(int type, int ctype)
 {
 	if(gameModel && gameModel->GetSimulation())
 	{
-		if (type == PT_LIFE && ctype >= 0 && ctype < NGOL && gameModel->GetSimulation()->gmenu)
+		if (type == PT_LIFE && ctype >= 0 && ctype < NGOL)
 			return gameModel->GetSimulation()->gmenu[ctype].name;
-		else if (type >= 0 && type < PT_NUM && gameModel->GetSimulation()->elements)
+		else if (type >= 0 && type < PT_NUM)
 			return std::string(gameModel->GetSimulation()->elements[type].Name);
 	}
 	return "";
@@ -1543,7 +1540,7 @@ bool GameController::IsValidElement(int type)
 
 std::string GameController::WallName(int type)
 {
-	if(gameModel && gameModel->GetSimulation() && gameModel->GetSimulation()->wtypes && type >= 0 && type < UI_WALLCOUNT)
+	if(gameModel && gameModel->GetSimulation() && type >= 0 && type < UI_WALLCOUNT)
 		return std::string(gameModel->GetSimulation()->wtypes[type].name);
 	else
 		return "";

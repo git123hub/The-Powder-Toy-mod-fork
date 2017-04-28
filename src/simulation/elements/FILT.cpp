@@ -72,6 +72,8 @@ int Element_FILT::graphics(GRAPHICS_FUNC_ARGS)
 	return 0;
 }
 
+#define FILT_NORMAL_OPERATIONS 12
+
 //#TPT-Directive ElementHeader Element_FILT static int interactWavelengths(Particle* cpart, int origWl)
 // Returns the wavelengths in a particle after FILT interacts with it (e.g. a photon)
 // cpart is the FILT particle, origWl the original wavelengths in the interacting particle
@@ -123,6 +125,22 @@ int Element_FILT::interactWavelengths(Particle* cpart, int origWl)
 		{
 			long long int lsb = filtWl & (-filtWl);
 			return (origWl / lsb) & 0x3FFFFFFF; // blue shift
+		}
+		case (FILT_NORMAL_OPERATIONS + 0):
+		{
+			return origWl | (~filtWl & mask);
+		}
+		case (FILT_NORMAL_OPERATIONS + 1):
+		{
+			return ((origWl + filtWl) | 0x20000000) & mask;
+		}
+		case (FILT_NORMAL_OPERATIONS + 2):
+		{
+			return ((origWl - filtWl) | 0x20000000) & mask;
+		}
+		case (FILT_NORMAL_OPERATIONS + 3):
+		{
+			return ((origWl * filtWl) | 0x20000000) & mask;
 		}
 		default:
 			return filtWl;

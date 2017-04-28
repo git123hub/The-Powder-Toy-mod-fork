@@ -20,7 +20,7 @@ int TPTScriptInterface::Command(std::string command)
 	lastError = "";
 	std::deque<std::string> words;
 	std::deque<AnyType> commandWords;
-	int retCode, nestedLevel = 0;
+	int retCode = -1, nestedLevel = 0;
 	char tempChar;
 
 	//Split command into words, put them on the stack
@@ -413,7 +413,7 @@ AnyType TPTScriptInterface::tptS_set(std::deque<std::string> * words)
 	}
 	else if(selector.GetType() == TypeString || selector.GetType() == TypeNumber)
 	{
-		int type;
+		int type = 0;
 		if (selector.GetType() == TypeNumber)
 			type = ((NumberType)selector).Value();
 		else if (selector.GetType() == TypeString)
