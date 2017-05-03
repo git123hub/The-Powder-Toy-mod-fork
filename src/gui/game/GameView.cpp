@@ -2391,7 +2391,7 @@ void GameView::OnDraw()
 			"TRONF", "TRONDL", "E189F32", "WIFI2", "FILTINC", "RNMRAY"
 		};
 		const int maxE189Type = 35;
-		static const int E189IntM[] = {0x81055000, 0x00000006};
+		static const int E189IntM[] = {0x81055020, 0x00000006};
 		//Draw info about simulation under cursor
 		int wavelengthGfx = 0, alpha = 255;
 		if (toolTipPosition.Y < 120)
@@ -2426,15 +2426,17 @@ void GameView::OnDraw()
 			{
 				if (partlife == 4 || partlife == 7 || partlife == 11)
 					wavelengthGfx = (ctype&0x3FFFFFFF);
+				/*
 				else if (partlife == 5)
 				{
-					int partfilt = parttmp >> 18;
-					int partfilt2 = parttmp & 0x1F;
-					if (partfilt >= 0 && partfilt <= 5 && partfilt != 4)
+					int partfilt = parttmp;
+					int partfilt2 = sample_particle->tmp2;
+					if (partfilt >= 1 && partfilt <= 6 && partfilt != 5)
 						wavelengthGfx = (ctype&0x3FFFFFFF);
-					if (partfilt == 4 || partfilt == 7 || (partfilt & 0x10) && ((0x0002E000 >> partfilt2) & 1))
+					if (partfilt == 5 || partfilt == 8 || !partfilt && ((0x0002E000 >> partfilt2) & 1))
 						partint = 1;
 				}
+				*/
 				else if (partlife == 13)
 				{
 					if ((sample_particle->tmp2 & 0x3) == 0x1)

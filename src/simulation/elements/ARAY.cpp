@@ -170,7 +170,10 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 								case 20:
 									if (!colored)
 										colored = 0x3FFFFFFF;
-									colored &= sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
+									tmp = sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
+									if (parts[r].tmp & 0x1)
+										tmp = ~tmp;
+									colored &= tmp;
 									if (!colored)
 										break;
 									continue;
@@ -230,14 +233,15 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									max_turn--;
 									continue;
 								case 16:
-									if (parts[r>>8].ctype == 1)
+									if (parts[r /* actually: r>>8 */].ctype == 1)
 									{
-										parts[r>>8].tmp += (r_incr > 1) ? r_incr : 1;
+										parts[r].tmp += (r_incr > 1) ? r_incr : 1;
 									}
-									goto break1a;
+									docontinue = nostop;
+									continue;
 								case 19:
-									r_incr += (int)((parts[r>>8].temp + 26.85f) / 100) - 3;
-									goto break1a;
+									r_incr += (int)((parts[r].temp + 26.85f) / 100) - 3;
+									continue;
 								}
 							}
 							else if (noturn >= 2)

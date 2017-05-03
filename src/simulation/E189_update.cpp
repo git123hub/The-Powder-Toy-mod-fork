@@ -165,6 +165,10 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		break;
 	case 5: // reserved for Simulation.cpp
 	case 7: // reserved for Simulation.cpp
+#ifdef NO_SPC_ELEM_EXPLODE
+	case 8:
+	case 9:
+#endif
 	case 13: // decoration only, no update function
 	case 15: // reserved for Simulation.cpp
 	case 17: // reserved for 186.cpp and Simulation.cpp
@@ -190,6 +194,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 		}
 		break;
+#ifndef NO_SPC_ELEM_EXPLODE
 	case 8: // acts like VIBR [振金]
 		rr = parts[i].tmp2;
 		if (parts[i].tmp > 20000)
@@ -303,8 +308,12 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					if (rt == PT_E189)
 					{
 						if (parts[r>>8].life == 8)
+						{
 							parts[r>>8].tmp += 1000;
-						continue;
+							continue;
+						}
+						if (parts[r>>8].life == 9)
+							continue;
 					}
 					if (!(rndstore & 0x7))
 					{
@@ -315,6 +324,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					trade++; rndstore >>= 3;
 				}
 		break;
+#endif /* NO_SPC_ELEM_EXPLODE */
 	case 10: // electronics debugger [电子产品调试]
 		for (rx = -1; rx <= 1; rx++)
 			for (ry = -1; ry <= 1; ry++)
@@ -325,7 +335,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						continue;
 					if ((r&0xFF) == PT_SPRK && parts[r>>8].life == 3)
 					{
-						switch (rtmp & 0x3F)
+						switch (rtmp & 0xFF)
 						{
 							case 0: sim->E189_pause |=  0x01; break;
 							case 1: sim->E189_pause |=  0x02; break;
@@ -337,19 +347,38 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							case 7:
 								if (parts[i].temp < 273.15f)
 									parts[i].temp = 273.15f;
-								sim->sim_max_pressure += (int)(parts[i].temp - 272.65f) / 100.0f;
+								rdif = (int)(parts[i].temp - 272.65f);
+								if (parts[r>>8].ctype != PT_INST)
+									rdif /= 100.0f;
+								sim->sim_max_pressure += rdif;
 								if (sim->sim_max_pressure > 256.0f)
 									sim->sim_max_pressure = 256.0f;
 							break;
 							case 8:
 								if (parts[i].temp < 273.15f)
 									parts[i].temp = 273.15f;
-								sim->sim_max_pressure -= (int)(parts[i].temp - 272.65f) / 100.0f;
+								rdif = (int)(parts[i].temp - 272.65f);
+								if (parts[r>>8].ctype != PT_INST)
+									rdif /= 100.0f;
+								sim->sim_max_pressure -= rdif;
 								if (sim->sim_max_pressure < 0.0f)
 									sim->sim_max_pressure = 0.0f;
 							break;
+							case 9: // set sim_max_pressure
+								if (parts[i].temp < 273.15f)
+									parts[i].temp = 273.15f;
+								if (parts[i].temp > 273.15f + 256.0f)
+									parts[i].temp = 273.15f + 256.0f;
+								sim->sim_max_pressure = (int)(parts[i].temp - 272.65f);
+							break;
+							case 10: // reset currentTick
+								sim->lightningRecreate -= sim->currentTick;
+								if (sim->lightningRecreate < 0)
+									sim->lightningRecreate = 0;
+								sim->currentTick = 0;
+							break;
 						}
-						if ((rtmp & 0x7E) == 0x40 && (rx != ry))
+						if ((rtmp & 0x1FE) == 0x100 && (rx != ry))
 							E189_Update::InsertText(sim, i, x, y, -rx, -ry);
 					}
 				}
@@ -548,7 +577,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 			break;
 		case 3: // flip-flop
-			if (parts[i].tmp >= 2)
+			if (parts[i].tmp >= (int)(parts[i].temp - 73.15f) / 100)
 			{
 				for (rx = -2; rx <= 2; rx++)
 					for (ry = -2; ry <= 2; ry++)
@@ -956,6 +985,8 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								int ncount = 0;
 								docontinue = 1;
 								rrx = (rtmp == PT_PSCN) ? 1 : 0;
+								if (rtmp != PT_NSCN && !rrx)
+									continue;
 								rry = 0;
 								if (parts[r>>8].dcolour == 0xFF000000) // if black deco is on
 									rry = 0xFF000000; // set deco colour to black
@@ -991,16 +1022,19 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 										docontinue = parts[r>>8].tmp;
 										parts[r>>8].tmp = 1;
 										continue;
-									case PT_GOO:
-										r = pmap[ny+ry][nx+rx];
-										if ((r&0xFF) == PT_METL || (r&0xFF) == PT_INDC)
-											conductTo (sim, r, nx+rx, ny+ry, parts);
-										while (--ncount)
+									case PT_E189:
+										if (parts[r>>8].life == 3)
 										{
-											nx -= rx; ny -= ry;
-											rr = pmap[ny][nx];
-											if ((rr & 0xFF) == PT_BRCK)
-												parts[rr>>8].tmp = 0;
+											r = pmap[ny+ry][nx+rx];
+											if ((r&0xFF) == PT_METL || (r&0xFF) == PT_INDC)
+												conductTo (sim, r, nx+rx, ny+ry, parts);
+											while (--ncount)
+											{
+												nx -= rx; ny -= ry;
+												rr = pmap[ny][nx];
+												if ((rr & 0xFF) == PT_BRCK)
+													parts[rr>>8].tmp = 0;
+											}
 										}
 										goto break1d;
 									default:
@@ -1075,6 +1109,13 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								{
 									parts[r>>8].temp += rdif;
 									r = pmap[ny += ry][nx += rx];
+								}
+								break;
+							case PT_C5:
+								r = pmap[ny += ry][nx += rx];
+								if (((r&0xFF) == PT_VIBR || (r&0xFF) == PT_BVBR) && parts[r>>8].life)
+								{
+									parts[r>>8].tmp2 = 1; parts[r>>8].tmp = 0;
 								}
 								break;
 							}

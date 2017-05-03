@@ -115,8 +115,10 @@ int Element_DTEC::update(UPDATE_FUNC_ARGS)
 						continue;
 					nx = x+rx;
 					ny = y+ry;
+					/*
 					if ((r&0xFF)==PT_FILT)
 					{
+					*/
 						while ((r&0xFF)==PT_FILT)
 						{
 							parts[r>>8].ctype = photonWl;
@@ -126,6 +128,7 @@ int Element_DTEC::update(UPDATE_FUNC_ARGS)
 								break;
 							r = pmap[ny][nx];
 						}
+					/*
 					}
 					else
 					{
@@ -133,10 +136,10 @@ int Element_DTEC::update(UPDATE_FUNC_ARGS)
 						{
 							if (parts[r>>8].life != 5)
 								break;
-							ntmp = parts[r>>8].tmp>>18;
-							if (ntmp < 0 || ntmp > 5)
+							ntmp = parts[r>>8].tmp;
+							if (ntmp < 1 || ntmp > 6)
 								break;
-							if (ntmp == 4)
+							if (ntmp == 5)
 							{
 								parts[r>>8].ctype &= 0x1E0;
 								parts[r>>8].ctype |= tempPhotWl;
@@ -152,6 +155,7 @@ int Element_DTEC::update(UPDATE_FUNC_ARGS)
 							r = pmap[ny][nx];
 						}
 					}
+					*/
 				}
 	}
 	return 0;
