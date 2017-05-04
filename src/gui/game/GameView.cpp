@@ -2388,9 +2388,9 @@ void GameView::OnDraw()
 			"PRSINS", "PRSINS", "TRONI", "TRONO", "LASER", "DIRCH", "HEATER", "PHTDUP", "VIBR2", "VIBR2",
 			"DEBUG", "PHTEM", "SPREFL", "DECOR", "DECO2", "PRTINS", "LOGICG", "PHDIOD", "DECO3", "NOTGIN",
 			"PARTEM", "EXPANDER", "EN_REFL", "STKMJ", "MOV_DRAY", "EXT_DRAY", "BUTTON", "STKSET", "RAY_REFL", "TRONE",
-			"TRONF", "TRONDL", "E189F32", "WIFI2", "FILTINC", "RNMRAY"
+			"TRONF", "TRONDL", "E189F32", "WIFI2", "FILTINC", "RNMRAY", "TMP2_T"
 		};
-		const int maxE189Type = 35;
+		const int maxE189Type = 36;
 		static const int E189IntM[] = {0x81055020, 0x00000006};
 		//Draw info about simulation under cursor
 		int wavelengthGfx = 0, alpha = 255;
@@ -2555,9 +2555,13 @@ void GameView::OnDraw()
 					sampleInfo << ", Tmp: " << parttmp;
 
 					// only elements that use .tmp2 show it in the debug HUD
-					if (type == PT_CRAY || type == PT_DRAY || type == PT_EXOT || type == PT_LIGH || type == PT_SOAP || type == PT_TRON || type == PT_VIBR || type == PT_VIRS
-					 || type == PT_WARP || type == PT_LCRY || type == PT_CBNW || type == PT_TSNS || type == PT_DTEC || type == PT_LSNS || type == PT_PSTN || type == PT_E189)
+					if (ren->sim->elements[type].Properties2 & PROP_DEBUG_USE_TMP2)
+					{
+					/* conditions:
+					  ( type == PT_CRAY || type == PT_DRAY || type == PT_EXOT || type == PT_LIGH || type == PT_SOAP || type == PT_TRON || type == PT_VIBR || type == PT_VIRS
+					 || type == PT_WARP || type == PT_LCRY || type == PT_CBNW || type == PT_TSNS || type == PT_DTEC || type == PT_LSNS || type == PT_PSTN || type == PT_E189 ) */
 						sampleInfo << ", Tmp2: " << sample_particle->tmp2;
+					}
 				}
 				else
 				{
