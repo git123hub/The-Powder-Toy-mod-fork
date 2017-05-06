@@ -168,14 +168,23 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									tmpz = 1;
 									continue;
 								case 20:
-									if (!colored)
-										colored = 0x3FFFFFFF;
-									tmp = sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
-									if (parts[r].tmp & 0x1)
-										tmp = ~tmp;
-									colored &= tmp;
-									if (!colored)
-										break;
+									if (!modFlag)
+									{
+										if (!colored)
+											colored = 0x3FFFFFFF;
+										tmp = sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
+										if (parts[r].tmp & 0x1)
+											tmp = ~tmp;
+										colored &= tmp;
+										if (!colored)
+											break;
+									}
+									else
+									{
+										parts[r].ctype = modProp;
+										if (!nostop)
+											goto break1a;
+									}
 									continue;
 								case 35:
 									if (!modFlag)
@@ -320,6 +329,11 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									isBlackDeco = (parts[r].dcolour==0xFF000000);
 									parts[r].life = 4;
 								}
+								else if (modFlag && (sim->elements[rt].Properties2 & PROP_DRAWONCTYPE))
+								{
+									parts[r].ctype = modProp;
+									docontinue = nostop;
+								}
 								else if (rt == PT_STOR)
 								{
 									if (parts[r].tmp)
@@ -357,11 +371,6 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										parts[r].life = 10;
 									}
 								// this if prevents BRAY from stopping on certain materials
-								}
-								else if (modFlag && (sim->elements[rt].Properties2 & PROP_DRAWONCTYPE))
-								{
-									parts[r].ctype = modProp;
-									docontinue = nostop;
 								}
 								else if (rt != PT_INWR && (rt != PT_SPRK || parts[r].ctype != PT_INWR) && rt != PT_ARAY && rt != PT_WIFI && !(rt == PT_SWCH && parts[r].life >= 10))
 								{
