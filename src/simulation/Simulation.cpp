@@ -2166,6 +2166,7 @@ void Simulation::init_can_move()
 	// can_move[PT_DEST][PT_BCLN] = 0;
 	// can_move[PT_DEST][PT_PBCN] = 0;
 	can_move[PT_DEST][PT_SPRK] = 3;
+	can_move[PT_DEST][PT_PINVIS] = 3;
 
 	can_move[PT_NEUT][PT_INVIS] = 2;
 	can_move[PT_ELEC][PT_LCRY] = 2;
@@ -5446,6 +5447,8 @@ void Simulation::RecalcFreeParticles()
 			parts[lastPartUnused].life = parts_lastActiveIndex+1;
 	}
 	parts_lastActiveIndex = lastPartUsed;
+	if (elementRecount && !sys_pause && !(E189_pause & 2) || framerender)
+		elementRecount = false;
 }
 
 void Simulation::CheckStacking()
