@@ -5366,7 +5366,7 @@ void Simulation::RecalcFreeParticles()
 			if (x>=0 && y>=0 && x<XRES && y<YRES)
 			{
 				
-				if (t == PT_PINVIS && (parts[i].tmp2>>8) >= i)
+				if (t == PT_PINVIS && (parts[i].tmp4>>8) >= i)
 					parts[i].tmp4 = 0;
 
 				if (elements[t].Properties & TYPE_ENERGY)
@@ -5375,9 +5375,9 @@ void Simulation::RecalcFreeParticles()
 				{
 					// Particles are sometimes allowed to go inside INVS and FILT
 					// To make particles collide correctly when inside these elements, these elements must not overwrite an existing pmap entry from particles inside them
-					if (!pmap[y][x] || ( !(elements[t].Properties2 & PROP_INVISIBLE) && !(tt = (pmap[y][x]&0xFF) == PT_PINVIS) ))
+					if (!pmap[y][x] || ( (pmap[y][x] & 0xFF) != PT_PINVIS && !(elements[t].Properties2 & PROP_INVISIBLE) ))
 						pmap[y][x] = t|(i<<8);
-					else if (tt)
+					else if ((pmap[y][x]&0xFF) == PT_PINVIS)
 						parts[pmap[y][x]>>8].tmp4 = t|(i<<8);
 
 					// (there are a few exceptions, including energy particles - currently no limit on stacking those)
@@ -5491,7 +5491,7 @@ void Simulation::CheckStacking()
 					int t = parts[i].type;
 					int x = (int)(parts[i].x+0.5f);
 					int y = (int)(parts[i].y+0.5f);
-					if (x>=0 && y>=0 && x<XRES && y<YRES && !(elements[t].Properties&TYPE_ENERGY))
+					if (x>=0 && y>=0 && x<XRES && y<YRES && !(elements[t].Properties& (TYPE_ENERGY | PROP_NO_NBHL_GEN) ))
 					{
 						if (pmap_count[y][x]>=NPART)
 						{
