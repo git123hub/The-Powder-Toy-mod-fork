@@ -2163,7 +2163,7 @@ void Simulation::init_can_move()
 			destinationType == PT_FILT || destinationType == PT_ISOZ  || destinationType == PT_ISZS || destinationType == PT_EXOT ||
 			destinationType == PT_TUNG || destinationType == PT_INVIS || destinationType == PT_SPNG || destinationType == PT_GEL  ||
 			destinationType == PT_VIRS || destinationType == PT_VRSS)
-			can_move[PT_DEST][destinationType] = 2;
+			can_move[PT_E186][destinationType] = 2;
 	}
 	
 	for (movingType = 1; movingType < PT_NUM; movingType++)
