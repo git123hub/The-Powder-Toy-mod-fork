@@ -524,6 +524,7 @@ SimulationSample Simulation::GetSample(int x, int y)
 	sample.PositionY = y;
 	if (x >= 0 && x < XRES && y >= 0 && y < YRES)
 	{
+		sample.cparticle = NULL;
 		if (photons[y][x])
 		{
 			sample.particle = parts[photons[y][x]>>8];
@@ -533,7 +534,8 @@ SimulationSample Simulation::GetSample(int x, int y)
 		{
 			sample.particle = parts[pmap[y][x]>>8];
 			sample.ParticleID = pmap[y][x]>>8;
-			sample.cparticle = &(parts[sample.particle.tmp4>>8]);
+			if ((pmap[y][x] & 0xFF) == PT_PINVIS)
+				sample.cparticle = &(parts[sample.particle.tmp4>>8]);
 		}
 		if (bmap[y/CELL][x/CELL])
 		{
@@ -2345,11 +2347,11 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 					return 0;
 				return 2; // corrected code
 			case PT_NEUT:
-				if (rlife == 22 && (tmp_flag & 1))
+				if (rlife == 5 || rlife == 22 && (tmp_flag & 1))
 					return 2;
 				return 0;
 			case PT_ELEC:
-				if (rlife == 22 && (tmp_flag & 2))
+				if (rlife == 5 || rlife == 22 && (tmp_flag & 2))
 					return 2;
 				return 0;
 			case PT_GRVT:
@@ -5366,19 +5368,21 @@ void Simulation::RecalcFreeParticles()
 			if (x>=0 && y>=0 && x<XRES && y<YRES)
 			{
 				
-				if (t == PT_PINVIS && (parts[i].tmp4>>8) >= i)
-					parts[i].tmp4 = 0;
-
 				if (elements[t].Properties & TYPE_ENERGY)
 					photons[y][x] = t|(i<<8);
 				else
 				{
+					tt = pmap[y][x];
 					// Particles are sometimes allowed to go inside INVS and FILT
 					// To make particles collide correctly when inside these elements, these elements must not overwrite an existing pmap entry from particles inside them
-					if (!pmap[y][x] || ( (pmap[y][x] & 0xFF) != PT_PINVIS && !(elements[t].Properties2 & PROP_INVISIBLE) ))
+					if (!tt || ( (tt & 0xFF) != PT_PINVIS && !(elements[t].Properties2 & PROP_INVISIBLE) ))
+					{
+						if (t == PT_PINVIS)
+							parts[i].tmp4 = tt;
 						pmap[y][x] = t|(i<<8);
-					else if ((pmap[y][x]&0xFF) == PT_PINVIS)
-						parts[pmap[y][x]>>8].tmp4 = t|(i<<8);
+					}
+					else if ((tt & 0xFF) == PT_PINVIS)
+						parts[tt>>8].tmp4 = t|(i<<8);
 
 					// (there are a few exceptions, including energy particles - currently no limit on stacking those)
 

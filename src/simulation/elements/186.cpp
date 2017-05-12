@@ -87,6 +87,7 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						break;
 				}
 				break;
+			/*
 			case 2:
 				sim->part_change_type(i, x, y, PT_NEUT);
 				break;
@@ -101,6 +102,7 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 				sim->part_change_type(i, x, y, PT_GRVT);
 				parts[i].tmp = 0;
 				break;
+			*/
 			}
 		}
 		return 0;
