@@ -2168,7 +2168,7 @@ void Simulation::init_can_move()
 	
 	for (movingType = 1; movingType < PT_NUM; movingType++)
 	{
-		if (destinationType != PT_PHOT || destinationType != PT_GRVT)
+		if (movingType != PT_PHOT || movingType != PT_GRVT)
 			can_move[movingType][PT_PINVIS] = 3;
 	}
 	
