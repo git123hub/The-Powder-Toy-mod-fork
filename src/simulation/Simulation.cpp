@@ -195,11 +195,11 @@ int Simulation::Load(int fullX, int fullY, GameSave * save)
 		{
 			if(save->blockMap[saveBlockY][saveBlockX])
 			{
-				if (bmap[saveBlockY+blockY][saveBlockX+blockX] == WL_BREAKABLE_WALL)
+				if (wtypes[ bmap[saveBlockY+blockY][saveBlockX+blockX] ].PressureTransition >= 0)
 				{
 					breakable_wall_count--;
 				}
-				if (save->blockMap[saveBlockY][saveBlockX] == WL_BREAKABLE_WALL)
+				if (wtypes[ save->blockMap[saveBlockY][saveBlockX] ].PressureTransition >= 0)
 				{
 					breakable_wall_count++;
 				}
@@ -414,7 +414,7 @@ void Simulation::clear_area(int area_x, int area_y, int area_w, int area_h)
 		{
 			if (bmap[y][x] == WL_GRAV)
 				gravWallChanged = true;
-			else if (bmap[y][x] == WL_BREAKABLE_WALL)
+			else if (wtypes[ bmap[y][x] ].PressureTransition >= 0)
 				breakable_wall_count --;
 			bmap[y][x] = 0;
 			emap[y][x] = 0;
@@ -780,19 +780,19 @@ void Simulation::SetEdgeMode(int newEdgeMode)
 	case 2:
 		for(int i = 0; i<(XRES/CELL); i++)
 		{
-			if (bmap[0][i] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[0][i] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[0][i] = 0;
-			if (bmap[YRES/CELL-1][i] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[YRES/CELL-1][i] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[YRES/CELL-1][i] = 0;
 		}
 		for(int i = 1; i<((YRES/CELL)-1); i++)
 		{
-			if (bmap[i][0] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[i][0] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[i][0] = 0;
-			if (bmap[i][XRES/CELL-1] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[i][XRES/CELL-1] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[i][XRES/CELL-1] = 0;
 		}
@@ -801,19 +801,19 @@ void Simulation::SetEdgeMode(int newEdgeMode)
 		int i;
 		for(i=0; i<(XRES/CELL); i++)
 		{
-			if (bmap[0][i] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[0][i] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[0][i] = WL_WALL;
-			if (bmap[YRES/CELL-1][i] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[YRES/CELL-1][i] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[YRES/CELL-1][i] = WL_WALL;
 		}
 		for(i=1; i<((YRES/CELL)-1); i++)
 		{
-			if (bmap[i][0] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[i][0] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[i][0] = WL_WALL;
-			if (bmap[i][XRES/CELL-1] == WL_BREAKABLE_WALL)
+			if (wtypes[ bmap[i][XRES/CELL-1] ].PressureTransition >= 0)
 				breakable_wall_count--;
 			bmap[i][XRES/CELL-1] = WL_WALL;
 		}
@@ -1257,11 +1257,11 @@ int Simulation::CreateWalls(int x, int y, int rx, int ry, int wall, Brush * cBru
 				if (wall == WL_GRAV || bmap[wallY][wallX] == WL_GRAV)
 					gravWallChanged = true;
 
-				if (bmap[wallY][wallX] == WL_BREAKABLE_WALL)
+				if (wtypes[ bmap[wallY][wallX] ].PressureTransition >= 0)
 				{
 					breakable_wall_count--;
 				}
-				if (wall == WL_BREAKABLE_WALL)
+				if (wtypes[ wall ].PressureTransition >= 0)
 				{
 					breakable_wall_count++;
 				}
@@ -3749,7 +3749,7 @@ void Simulation::UpdateParticles(int start, int end)
 			          (bmap[y/CELL][x/CELL]==WL_ALLOWPOWDER && !(elements[t].Properties&TYPE_PART)) ||
 			          (bmap[y/CELL][x/CELL]==WL_ALLOWGAS && !(elements[t].Properties&TYPE_GAS)) || //&& elements[t].Falldown!=0 && parts[i].type!=PT_FIRE && parts[i].type!=PT_SMKE && parts[i].type!=PT_CFLM) ||
 			          (bmap[y/CELL][x/CELL]==WL_ALLOWENERGY && !(elements[t].Properties&TYPE_ENERGY)) ||
-					  (bmap[y/CELL][x/CELL]==WL_DETECT && (t==PT_METL || t==PT_SPRK)) ||
+					  (bmap[y/CELL][x/CELL]==WL_DETECT && (t==PT_METL || t==PT_SPRK || t==PT_INDC)) || // can't detecting INDC
 			          (bmap[y/CELL][x/CELL]==WL_EWALL && !emap[y/CELL][x/CELL])) && (t!=PT_STKM) && (t!=PT_STKM2) && (t!=PT_FIGH)))
 			{
 				kill_part(i);
@@ -5612,24 +5612,29 @@ void Simulation::BeforeSim()
 		int tmp_count = breakable_wall_count, xx, yy;
 		if (breakable_wall_count >= 0)
 		{
+			// maybe "spaghetti code" ?
 			for (y = 0; y < YRES/CELL; y++)
 			{
 				for (x = 0; x < XRES/CELL; x++)
 				{
 					if (!tmp_count)
 						goto bwall_count_end;
-					if (bmap[y][x] == WL_BREAKABLE_WALL)
+					int wtrans = wtypes[ bmap[y][x] ].PressureTransition;
+					if (wtrans >= 0)
 					{
 						tmp_count--;
 						if (pv[y][x] > sim_max_pressure || pv[y][x] < -sim_max_pressure)
 						{
 							breakable_wall_count--;
 							bmap[y][x] = 0;
-							for (yy = 0; yy < CELL; yy++)
+							if (wtrans)
 							{
-								for (xx = 0; xx < CELL; xx++)
+								for (yy = 0; yy < CELL; yy++)
 								{
-									create_part(-1, x*CELL+xx, y*CELL+yy, PT_STNE);
+									for (xx = 0; xx < CELL; xx++)
+									{
+										create_part(-1, x*CELL+xx, y*CELL+yy, wtrans);
+									}
 								}
 							}
 						}

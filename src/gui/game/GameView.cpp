@@ -1580,12 +1580,7 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 				c->ResetAir();
 			break;
 		case 'm':
-			if (showDebug)
-			{
-				showDebugState ++;
-				if (showDebugState >= 11)
-					showDebugState = 0;
-			}
+			alternateState = 4;
 			break;
 		case 'c':
 			if(ctrl)
@@ -1716,8 +1711,14 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 				case 'd':
 					showDebugState = (shift ? 12 : 9);
 				break;
+				case 'e':
+					showDebugStateFlags ^= 0x10;
+				break;
 				case 'f':
 					showDebugState = 11;
+				break;
+				case 'h':
+					usingHexadecimal = !usingHexadecimal;
 				break;
 				case 'l':
 					showDebugState = 2;
@@ -1731,14 +1732,22 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 					else
 						showDebugStateFlags ^= 0x01;
 				break;
+				case 's':
+					if (showDebug)
+					{
+						showDebugState ++;
+						if (showDebugState >= 11)
+							showDebugState = 0;
+					}
+				break;
 				case 't':
 					if (!alt)
 						showDebugState = (shift ? 5 : 1);
 					else
 					{
-						int tmp = (showDebugState >> 2) + (shift ? 2 : 1);
+						int tmp = ((showDebugStateFlags >> 2) & 3) + (shift ? 2 : 1);
 						showDebugStateFlags &= ~0x0C;
-						showDebugStateFlags |= tmp << 2;
+						showDebugStateFlags |= (tmp % 3) << 2;
 					}
 				break;
 				case 'v':
@@ -1746,10 +1755,6 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 						showDebugState = 4;
 					else
 						showDebugStateFlags ^= 0x02;
-				break;
-				case 'x':
-					usingHexadecimal = !usingHexadecimal;
-					alternateState = 1;
 				break;
 				case '-':
 					if (debugPrecision) { debugPrecision --; }
@@ -1761,7 +1766,7 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 			}
 			if(key >= '0' && key <= '9')
 			{
-				alternateState = (key - '0') + 4;
+				alternateState = (key - '0') + 5;
 				if (shift)
 					alternateState += 10;
 			}
@@ -1769,6 +1774,8 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 		case 2:
 			break;
 		case 3:
+			break;
+		case 4:
 			break;
 		}
 	}
@@ -2697,6 +2704,11 @@ void GameView::OnDraw()
 		else if (sample.WallType)
 		{
 			sampleInfo << c->WallName(sample.WallType);
+			if (showDebugStateFlags & 0x00000010)
+			{
+				int emap1 = ren->sim->emap[sample.PositionY/CELL][sample.PositionX/CELL];
+				sampleInfo << ", emap: " << emap1;
+			}
 			sampleInfo << ", Pressure: " << std::fixed << sample.AirPressure;
 		}
 		else if (sample.isMouseInSim)
