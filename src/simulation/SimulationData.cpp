@@ -133,11 +133,13 @@ wall_type * LoadWalls(int & wallCount)
 		{PIXPACK(0xFFFF22), PIXPACK(0x101010), PIXPACK(0x000000), 2, Renderer::WallIcon, "CONDUCTOR",		"DEFAULT_WL_CNDTR",	"Conductor. Allows all particles to pass through and conducts electricity.", NT},
 		{PIXPACK(0x242424), PIXPACK(0x101010), PIXPACK(0x000000), 0, Renderer::WallIcon, "EHOLE",			"DEFAULT_WL_EHOLE",	"E-Hole. absorbs particles, releases them when powered.", NT},
 		{PIXPACK(0x579777), PIXPACK(0x000000), PIXPACK(0x000000), 1, Renderer::WallIcon, "GAS WALL",		"DEFAULT_WL_GAS",	"Allows gases, blocks all other particles.", NT},
-		{PIXPACK(0xFFEE00), PIXPACK(0xAA9900), PIXPACK(0x000000), 4, Renderer::WallIcon, "GRAVITY WALL",	"DEFAULT_WL_GRVTY",	"Gravity wall. Newtonian Gravity has no effect inside a box drawn with this.", NT},
-		{PIXPACK(0xFFAA00), PIXPACK(0xAA5500), PIXPACK(0x000000), 4, Renderer::WallIcon, "ENERGY WALL",		"DEFAULT_WL_ENRGY",	"Allows energy particles, blocks all other particles.", NT},
+		{PIXPACK(0xFFEE00), PIXPACK(0x000000), PIXPACK(0xAA9900), 4, Renderer::WallIcon, "GRAVITY WALL",	"DEFAULT_WL_GRVTY",	"Gravity wall. Newtonian Gravity has no effect inside a box drawn with this.", NT},
+		{PIXPACK(0xFFAA00), PIXPACK(0x000000), PIXPACK(0xAA5500), 4, Renderer::WallIcon, "ENERGY WALL",		"DEFAULT_WL_ENRGY",	"Allows energy particles, blocks all other particles.", NT},
 		{PIXPACK(0xDCDCDC), PIXPACK(0x000000), PIXPACK(0x000000), 1, Renderer::WallIcon, "AIRBLOCK WALL",	"DEFAULT_WL_NOAIR",	"Allows all particles, but blocks air.", NT},
 		{PIXPACK(0x808080), PIXPACK(0x000000), PIXPACK(0x000000), 0, Renderer::WallIcon, "ERASEALL",		"DEFAULT_WL_ERASEA","Erases walls, particles, and signs.", NT},
 		{PIXPACK(0x808080), PIXPACK(0x000000), PIXPACK(0x80C0FF), 5, Renderer::WallIcon, "BREAKABLE WALL",	"DEFAULT_WL_BRWALL","Breakable wall, but allows air.", PT_STNE},
+		{PIXPACK(0x808080), PIXPACK(0x101010), PIXPACK(0xFFE060), 5, Renderer::WallIcon, "BREAKABLE CONDUCTIVE WALL",
+		 "DEFAULT_WL_BCNDTW","Breakable conductive wall.", PT_BRMT},
 	};
 	wallCount = UI_WALLCOUNT;
 	wall_type * wtypesT = (wall_type*)malloc(UI_WALLCOUNT*sizeof(wall_type));
