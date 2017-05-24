@@ -51,6 +51,8 @@ int Element_PROT::update(UPDATE_FUNC_ARGS)
 {
 	sim->pv[y/CELL][x/CELL] -= .003f;
 	int under = pmap[y][x];
+	if ((under & 0xFF) == PT_PINVIS)
+		under = parts[under>>8].tmp4;
 	int utype = under & 0xFF;
 	switch (utype)
 	{
