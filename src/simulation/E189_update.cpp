@@ -21,6 +21,9 @@ unsigned msvc_clz(unsigned a)
 #define __builtin_clz msvc_clz
 #endif
 
+
+// 'UPDATE_FUNC_ARGS' definition: Simulation* sim, int i, int x, int y, int surround_space, int nt, Particle *parts, int pmap[YRES][XRES]
+
 int E189_Update::update(UPDATE_FUNC_ARGS)
 {
 	int return_value = 1; // skip movement, legacyUpdate, etc.
@@ -1409,7 +1412,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								rt = rr & 0xFF;
 								if (rt == PT_SPRK)
 									rt = parts[rr>>8].ctype;
-								if (rt != PT_INWR && rt != PT_FILT && rt != PT_STOR)
+								if (rt && rt != PT_INWR && rt != PT_FILT && rt != PT_STOR && rt != PT_BIZR && rt != PT_BIZRG && rt != PT_BIZRS)
 									break;
 								pmap[ny][nx] = 0; // clear pmap
 								Element_PSTN::tempParts[rrx] = rr;
@@ -1438,6 +1441,38 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							}
 						}
 					}
+			return return_value;
+		case 25: // arrow key detector
+			rrx = Element_E189::Arrow_keys; // current state
+			rry = (parts[i].flags >> 16); // previous state
+			switch (rtmp)
+			{
+				case 0: break;
+				case 1: rry = rrx & ~rry; break; // start pressing key
+				case 2: rry &= ~rrx; break; // end pressing key
+				default:
+					return return_value;
+			}
+			parts[i].flags &= 0x0000FFFF;
+			parts[i].flags |= (rrx << 16);
+			for (rii = 0; rii < 4; rii++) // do 4 times
+			{
+				if (rry & (1 << rii)) // check direction
+				{
+					rx = tron_ry[rii];
+					ry = tron_rx[rii];
+					r = pmap[y+ry][x+rx]; // checking distance = 1
+					if (!r)
+					{
+						rx *= 2; ry *= 2;
+						r = pmap[y+ry][x+rx]; // checking distance = 2
+					}
+					if (!r)
+						continue;
+					if ((sim->elements[r & 0xFF].Properties&(PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
+						conductTo (sim, r, x+rx, y+ry, parts);
+				}
+			}
 			return return_value;
 		}
 		break;
@@ -1905,6 +1940,62 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 				}
 		break;
+	case 37: // Simulation of Langton's ant (turmite)
+		// At a white square (NONE), turn 90° right ((tmp % 4) += 1), flip the color of the square, move forward one unit
+		// At a black square (INWR), turn 90° left  ((tmp % 4) -= 1), flip the color of the square, move forward one unit
+		// direction: 0 = right, 1 = down, 2 = left, 3 = up
+		if (!(rtmp & 4)) // white square
+		{
+			rr = (rtmp + 1) & 3;
+		}
+		else // black square
+		{
+			ri = parts[i].tmp2;
+			rr = (rtmp - (ri ? 0 : 1)) & 3;
+		}
+		rr |= rtmp & ~7;
+		rx = x - tron_rx[rr]; ry = y - tron_ry[rr];
+		if (sim->edgeMode == 2)
+		{
+			if (rx < CELL)
+				rx += XRES - 2*CELL;
+			if (rx >= XRES-CELL)
+				rx -= XRES - 2*CELL;
+			if (ry < CELL)
+				ry += YRES - 2*CELL;
+			if (ry >= YRES-CELL)
+				ry -= YRES - 2*CELL;
+		}
+		
+		pmap[y][x] = 0;
+		if (!(rtmp & 4)) // black <-> white square
+		{
+			ri = sim->create_part(-1, x, y, PT_INWR);
+			if (ri >= 0)
+				parts[ri].dcolour = parts[i].ctype;
+		}
+		if (sim->IsWallBlocking(rx, ry, 0))
+			goto kill1;
+		else
+		{
+			r = pmap[ry][rx];
+			if (r)
+			{
+				if ((r&0xFF) == PT_INWR || (r&0xFF) == PT_SPRK && parts[r>>8].ctype == PT_INWR)
+					sim->kill_part(r>>8), rr |= 4;
+				else
+					goto kill1;
+			}
+		}
+		parts[i].x = rx;
+		parts[i].y = ry;
+		
+		parts[i].tmp = rr;
+		pmap[ry][rx] = parts[i].type | (i<<8);
+		break;
+	kill1:
+		sim->kill_part(i);
+		return return_value;
 	}
 	
 	if(ttan>=2) {
