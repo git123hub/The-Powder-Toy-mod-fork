@@ -537,7 +537,11 @@ SimulationSample Simulation::GetSample(int x, int y)
 			sample.particle = parts[pmap[y][x]>>8];
 			sample.ParticleID = pmap[y][x]>>8;
 			if ((pmap[y][x] & 0xFF) == PT_PINVIS)
-				sample.cparticle = &(parts[sample.particle.tmp4>>8]);
+			{
+				int ParticleID2 = sample.particle.tmp4>>8;
+				if (ParticleID2 >= 0 && ParticleID2 < NPART)
+					sample.cparticle = &(parts[ParticleID2]);
+			}
 		}
 		if (bmap[y/CELL][x/CELL])
 		{
@@ -4178,7 +4182,9 @@ void Simulation::UpdateParticles(int start, int end)
 					{
 						if (t==PT_ICEI || t==PT_LAVA || t==PT_SNOW)
 							parts[i].ctype = parts[i].type;
-						if (!(t==PT_ICEI && parts[i].ctype==PT_FRZW))
+						if (!(t==PT_ICEI && parts[i].ctype==PT_FRZW ||
+							(t==PT_VIRS || t==PT_VRSS || t==PT_VRSG) && parts[i].tmp4==PT_E189 // don't clear VIRS-infected E189's life
+						))
 							parts[i].life = 0;
 						if (t == PT_FIRE)
 						{

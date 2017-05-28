@@ -325,7 +325,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		}
 		break;
 #endif /* NO_SPC_ELEM_EXPLODE */
-	case 10: // electronics debugger [电子产品调试]
+	case 10: // electronics debugger input [电子产品调试]
 		for (rx = -1; rx <= 1; rx++)
 			for (ry = -1; ry <= 1; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
@@ -398,6 +398,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 									}
 								}
 							break;
+							// 'decorations_enable' 属于 'Renderer', 不是 'Simulation'
 						}
 						if ((rtmp & 0x1FE) == 0x100 && (rx != ry))
 							E189_Update::InsertText(sim, i, x, y, -rx, -ry);
@@ -1136,6 +1137,13 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 									r = pmap[ny += ry][nx += rx];
 								}
 								break;
+							case PT_FRAY:
+								rrx = r & 0xFF;
+								rii = (parts[i].tmp == PT_PSCN) ? 1 : -1;
+								parts[r>>8].tmp += rii;
+								if (parts[r>>8].tmp < 0)
+									parts[r>>8].tmp = 0;
+								break;
 							case PT_C5:
 								r = pmap[ny += ry][nx += rx];
 								if (((r&0xFF) == PT_VIBR || (r&0xFF) == PT_BVBR) && parts[r>>8].life)
@@ -1241,7 +1249,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							else
 								parts[r>>8].life = rrx;
 						}
-						else if ((r&0xFF) == PT_METL || (r&0xFF) == PT_PSCN || (r&0xFF) == PT_NSCN)
+						else if ((r&0xFF) == PT_METL || (r&0xFF) == PT_PSCN || (r&0xFF) == PT_NSCN || (r&0xFF) == PT_INDC)
 						{
 							if (rry)
 								parts[r>>8].life = 0;
@@ -1362,7 +1370,75 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 				}
 			}
-			return 1;
+			return return_value;
+		case 24: // shift register
+			if (rtmp <= 0)
+				rtmp = XRES + YRES;
+			for (rx = -1; rx < 2; rx++)
+				for (ry = -1; ry < 2; ry++)
+					if (BOUNDS_CHECK && (rx || ry))
+					{
+						r = pmap[y-ry][x-rx];
+						if ((r&0xFF) == PT_SPRK && parts[r>>8].life == 3)
+						{
+							rctype = parts[r>>8].ctype;
+							switch (rctype)
+							{
+							case PT_PTCT: // PTCT and NTCT don't moving diagonal
+								if (rx && ry) continue;
+							case PT_PSCN:
+								ri = floor((parts[i].temp - 268.15)/10); // How many tens of degrees above 0 C
+								break;
+							case PT_NTCT:
+								if (rx && ry) continue;
+							case PT_NSCN:
+								ri = -floor((parts[i].temp - 268.15)/10);
+								break;
+							default:
+								continue;
+							}
+							nx = x + rx, ny = y + ry;
+							if ((pmap[ny][nx]&0xFF) == PT_FRME)
+							{
+								nx += rx, ny += ry;
+							}
+							int nx2 = nx, ny2 = ny;
+							for (rrx = 0; sim->InBounds(nx, ny) && rrx < rtmp; rrx++, nx+=rx, ny+=ry) // fixed
+							{
+								rr = pmap[ny][nx];
+								rt = rr & 0xFF;
+								if (rt == PT_SPRK)
+									rt = parts[rr>>8].ctype;
+								if (rt != PT_INWR && rt != PT_FILT && rt != PT_STOR)
+									break;
+								pmap[ny][nx] = 0; // clear pmap
+								Element_PSTN::tempParts[rrx] = rr;
+							}
+							for (rry = 0; rry < rrx; rry++) // "rrx" in previous "for" loop
+							{
+								rr = Element_PSTN::tempParts[rry]; // moving like PSTN
+								if (!rr)
+									continue;
+								rii = rry + ri;
+								if (rii < 0 || rii >= rrx) // assembly: "cmp rii, rrx" then "jae/jb ..."
+								{
+									if (!(parts[i].tmp3 & 1))
+									{
+										sim->kill_part(rr >> 8);
+										continue;
+									}
+									else if (rii < 0)
+										rii += rrx;
+									else
+										rii -= rrx;
+								}
+								nx = nx2 + rii * rx; ny = ny2 + rii * ry;
+								parts[rr>>8].x = nx; parts[rr>>8].y = ny;
+								pmap[ny][nx] = rr;
+							}
+						}
+					}
+			return return_value;
 		}
 		break;
 			
