@@ -190,6 +190,8 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						if ((sim->elements[r&0xFF].HeatConduct > 0) && ((r&0xFF) != PT_HSWC || parts[r>>8].life == 10))
 							parts[r>>8].temp = parts[i].temp;
 					}
+			if (sim->aheat_enable) //if ambient heat sim is on
+				sim->hv[y/CELL][x/CELL] = parts[i].temp;
 		}
 		break;
 #ifndef NO_SPC_ELEM_EXPLODE
@@ -504,26 +506,22 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		switch (rctype = parts[i].ctype)
 		{
 		case 0: // logic gate
-			rii = rtmp & ~0xFF;
-			switch (rtmp & 3)
+			rrx = parts[i].tmp2; // save old value
+			rry = parts[i].tmp3; // save old value
+			if (rry)
+				parts[i].tmp3 --;
+			switch (rtmp & 7)
 			{
-				case 0: conductive =  rii ||  parts[i].tmp2; break;
-				case 1: conductive =  rii &&  parts[i].tmp2; break;
-				case 2: conductive = !rii &&  parts[i].tmp2; break;
-				case 3: conductive = !rii != !parts[i].tmp2; break;
+				case 0: conductive =  rrx ||  rry; break;
+				case 1: conductive =  rrx &&  rry; break;
+				case 2: conductive =  rrx && !rry; break;
+				case 3: conductive = !rrx &&  rry; break;
+				case 4: conductive = !rrx != !rry; break;
+				case 5: conductive =  rrx; break; // input 1 detector
+				case 6: conductive =  rry; break; // input 2 detector
 			}
-			if (!(rtmp & 4) == conductive)
-			{
-				for (rx = -2; rx <= 2; rx++)
-					for (ry = -2; ry <= 2; ry++)
-						if (BOUNDS_CHECK && (rx || ry))
-						{
-							r = pmap[y+ry][x+rx];
-							if ((r & 0xFF) == PT_NSCN) /* && parts[r>>8].life == 0 */
-								conductTo (sim, r, x+rx, y+ry, parts);
-						}
-			}
-			parts[i].tmp -= (rii > 0 ? 0x100 : 0);
+			if (rtmp & 8)
+				conductive = !conductive;
 
 			// PSCNCount = 0;
 			{
@@ -536,21 +534,25 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							{
 								if (parts[r>>8].ctype == PT_PSCN)
 								{
-									// PSCNCount ++;
-									parts[i].tmp2 = 8 + 1;
-								}
-								else if (parts[r>>8].ctype == PT_BMTL)
-								{
-									// INWRCount ++;
-									parts[i].tmp |= (8 * 0x100);
+									if (parts[r>>8].tmp & 1)
+										parts[i].tmp3 = 8;
+									else
+										parts[i].tmp2 = 8 + 1;
 								}
 							}
+							else if ((r & 0xFF) == PT_NSCN && conductive)
+								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 			}
 			break;
 		case 1: // conduct->insulate counter
 			if (parts[i].tmp)
 			{
+				if (parts[i].flags & FLAG_SKIPMOVE)
+				{
+					parts[i].flags &= ~FLAG_SKIPMOVE;
+					return return_value;
+				}
 				if (parts[i].tmp2 == 1)
 				{
 					for (rx = -2; rx <= 2; rx++)
@@ -1360,12 +1362,14 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					if (pavg != PT_INSL && pavg != PT_INDI)
 					{
 						rt = (r&0xFF);
-						if (rt == PT_SPRK)
+						if (rt == PT_SPRK && parts[r>>8].life == 3)
 						{
-							if (parts[r>>8].ctype == PT_NSCN)
-								parts[i].tmp = 0;
-							else if (parts[r>>8].ctype == PT_PSCN)
-								parts[i].tmp = 1;
+							switch (parts[r>>8].ctype)
+							{
+								case PT_NSCN: parts[i].tmp = 0; break;
+								case PT_PSCN: parts[i].tmp = 1; break;
+								case PT_INST: parts[i].tmp = !parts[i].tmp; break;
+							}
 						}
 						else if (old_tmp && rt != PT_PSCN && rt != PT_NSCN &&
 							(sim->elements[rt].Properties&(PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
@@ -1412,7 +1416,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								rt = rr & 0xFF;
 								if (rt == PT_SPRK)
 									rt = parts[rr>>8].ctype;
-								if (rt && rt != PT_INWR && rt != PT_FILT && rt != PT_STOR && rt != PT_BIZR && rt != PT_BIZRG && rt != PT_BIZRS)
+								if (rt && rt != PT_INWR && rt != PT_FILT && rt != PT_STOR && rt != PT_BIZR && rt != PT_BIZRG && rt != PT_BIZRS && rt != PT_GOO)
 									break;
 								pmap[ny][nx] = 0; // clear pmap
 								Element_PSTN::tempParts[rrx] = rr;
@@ -1494,35 +1498,53 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 				}
 		return return_value;
 	case 20: // particle emitter
+		{
 		rctype = parts[i].ctype;
-		if (!(rctype & 0xFF))
+		int rctypeExtra = rctype >> 8;
+		rctype &= 0xFF;
+		if (!rctype)
 			return return_value;
+		if (rtmp <= 0)
+			rtmp = 3;
 		for (rx = -1; rx < 2; rx++)
 			for (ry = -1; ry < 2; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
 				{
-					r = pmap[y+ry][x+rx];
+					r = pmap[y-ry][x-rx];
 					if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
 					{
 						// if (sim->elements[parts[r>>8].ctype].Properties & PROP_INSULATED && rx && ry) // INWR, PTCT, NTCT, etc.
 						//	continue;
-						if ((rctype & 0xFF) != PT_LIGH || !(rand() & 15))
+						if (rctype != PT_LIGH || !(rand() & 15))
 						{
-							// rx = rand()%3-1;
-							// ry = rand()%3-1;
-							int np = sim->create_part(-1, x-rx, y-ry, rctype & 0xFF, rctype >> 8);
+							nx = x+rx; ny = y+ry;
+							if (rctype == PT_EMBR) // use by EMBR (explosion spark) emitter
+							{
+								rr = pmap[ny][nx];
+								if ((rr & 0xFF) == PT_GLAS)
+								{
+									rdif = parts[rr>>8].temp; // get temperature from GLAS
+									ny += ry; nx += rx;
+								}
+							}
+							int np = sim->create_part(-1, nx, ny, rctype, rctypeExtra);
 							if (np >= 0) {
-								parts[np].vx = -3*rx; parts[np].vy = -3*ry;
+								parts[np].vx = rtmp*rx; parts[np].vy = rtmp*ry;
 								parts[np].dcolour = parts[i].dcolour;
 								if ((rctype & 0xFF) == PT_PHOT && (np > i)) // like E189 (life = 11)
 								{
 									parts[np].flags |= FLAG_SKIPMOVE;
+								}
+								else if (rctype == PT_EMBR)
+								{
+									parts[np].temp = rdif; // set temperature to EMBR
 								}
 							}
 						}
 						// return return_value;
 					}
 				}
+		}
 		break;
 	case 21:
 	/* MERC/DEUT/YEST expander, or SPNG "water releaser",

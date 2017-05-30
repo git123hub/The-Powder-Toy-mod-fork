@@ -11,7 +11,7 @@ Element_PINVIS::Element_PINVIS()
 
 	Advection = 0.0f;
 	AirDrag = 0.00f * CFDS;
-	AirLoss = 0.90f;
+	AirLoss = 1.00f;
 	Loss = 0.00f;
 	Collision = 0.0f;
 	Gravity = 0.0f;
