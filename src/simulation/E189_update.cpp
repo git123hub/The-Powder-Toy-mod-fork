@@ -26,7 +26,7 @@ unsigned msvc_clz(unsigned a)
 
 int E189_Update::update(UPDATE_FUNC_ARGS)
 {
-	int return_value = 1; // skip movement, legacyUpdate, etc.
+	int return_value = 1; // skip movement, 'stagnant' check, legacyUpdate, etc.
 	static int tron_rx[4] = {-1, 0, 1, 0};
 	static int tron_ry[4] = { 0,-1, 0, 1};
 	static int osc_r1 [4] = { 1,-1, 2,-2};
@@ -559,9 +559,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		case 1: // conduct->insulate counter
 			if (parts[i].tmp)
 			{
-				if (parts[i].flags & FLAG_SKIPMOVE)
+				if (parts[i].flags & FLAG_SKIPMOVE) // if wait flag exist
 				{
-					parts[i].flags &= ~FLAG_SKIPMOVE;
+					parts[i].flags &= ~FLAG_SKIPMOVE; // clear wait flag
 					return return_value;
 				}
 				if (parts[i].tmp2)
@@ -1208,37 +1208,14 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						}
 					}
 			break;
-		case 19: // universal conducts?
-			if (parts[i].tmp2 == 2)
-			{
-				for (rx = -2; rx <= 2; rx++)
-					for (ry = -2; ry <= 2; ry++)
-						if (BOUNDS_CHECK && (!rx || !ry))
-						{
-							r = pmap[y+ry][x+rx];
-							if (!r)
-								continue;
-							pavg = sim->parts_avg(i,r>>8,PT_INSL);
-							if (pavg != PT_INSL && pavg != PT_INDI)
-							{
-								if ((r & 0xFF) == PT_INST)
-								{
-									sim->FloodINST(x+rx,y+ry,PT_SPRK,PT_INST);
-								}
-								else if (sim->elements[r].Properties & PROP_CONDUCTS)
-								{
-									conductTo (sim, r, x+rx, y+ry, parts);
-								}
-							}
-						}
-			}
+		case 19: // universal conducts (without WWLD)?
+			// int oldl;
+			/* oldl */ rii = parts[i].tmp2;
 			if (parts[i].tmp2)
 			{
 				parts[i].tmp2--;
-				break;
+				// break;
 			}
-			// goto continue1c;
-		// continue1c:
 			for (rx = -2; rx <= 2; rx++)
 				for (ry = -2; ry <= 2; ry++)
 					if (BOUNDS_CHECK && (!rx || !ry))
@@ -1246,10 +1223,32 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						r = pmap[y+ry][x+rx];
 						if (!r) continue;
 						pavg = sim->parts_avg(i,r>>8,PT_INSL);
-						if ((pavg != PT_INSL && pavg != PT_INDI) && (r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+						if (pavg == PT_INSL || pavg == PT_INDI)
+							continue;
+						if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3 && !rii)
 						{
 							parts[i].tmp2 = 2;
-							return return_value;
+							// return return_value;
+						}
+						else if ((r & 0xFF) == PT_WIRE)
+						{
+							if (!rii && parts[r>>8].tmp == 1)
+							{
+								parts[i].tmp2 = 2;
+							}
+							else if (!parts[r>>8].tmp && rii == 2)
+							{
+								parts[r>>8].ctype = 1;
+								if ((r>>8) > i)
+									parts[r>>8].flags |= FLAG_SKIPMOVE;
+							}
+						}
+						else if (rii == 2)
+						{
+							if ((r & 0xFF) == PT_INST)
+								sim->FloodINST(x+rx,y+ry,PT_SPRK,PT_INST);
+							else if (sim->elements[r & 0xFF].Properties & PROP_CONDUCTS)
+								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 					}
 			break;
