@@ -87,6 +87,16 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						break;
 				}
 				break;
+/*
+			case 44: // (300 - 0x100)
+				if (sim->elements[r&0xFF].Properties & PROP_CONDUCTS)
+				{
+					parts[r>>8].ctype = parts[r>>8].type;
+					parts[r>>8].life = 40 + parts[r>>8].life;
+					sim->part_change_type(r>>8, x, y, PT_SPRK);
+				}
+				break;
+*/
 			/*
 			case 2:
 				sim->part_change_type(i, x, y, PT_NEUT);
@@ -243,15 +253,27 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 			if (BOUNDS_CHECK && 2 > rand()%5)
 			{
 				r = sim->photons[y + ry][x + rx];
+/*
 				s = parts[i].ctype;
 				if ((r&0xFF) == PT_NEUT && (s == PT_PROT || s == PT_GRVT))
 				{
 					sim->part_change_type(r>>8, x, y, s);
 					parts[i].ctype = PT_NEUT;
 				}
+*/
+				if ((r&0xFF) == PT_PROT)
+				{
+					float velocity1 = powf(parts[i].vx, 2.0f)+powf(parts[i].vy, 2.0f);
+					float velocity2 = powf(parts[r>>8].vx, 2.0f)+powf(parts[r>>8].vy, 2.0f);
+					if (velocity1 + velocity2 > 15.0f && !pmap[y+ry][x+rx])
+					{
+						sim->part_change_type(r>>8, x, y, PT_BOMB);
+					}
+				}
 			}
 		}
 	}
+	
 	return 0;
 }
 

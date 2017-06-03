@@ -624,6 +624,8 @@ void Element_STKM::STKM_interact(Simulation *sim, playerst *playerp, int i, int 
 	r = sim->pmap[y][x];
 	if (r)
 	{
+		if ((r&0xFF) == PT_PINVIS)
+			r = sim->parts[r>>8].tmp4;
 		if (!(sim->E189_FIGH_pause & 16))
 		{
 			if ((r&0xFF)==PT_SPRK && playerp->elem!=PT_LIGH) //If on charge
@@ -735,6 +737,7 @@ void Element_STKM::STKM_init_legs(Simulation * sim, playerst *playerp, int i)
 	playerp->nextStickman = -1;
 	playerp->lastChild = -1;
 	playerp->self_ID = i;
+	playerp->underp = 0;
 }
 
 //#TPT-Directive ElementHeader Element_STKM static void STKM_set_element(Simulation *sim, playerst *playerp, int element)
