@@ -708,9 +708,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		case 6: // wire crossing
 		case 7:
 			{
-				if (parts[i].tmp2)
+				if (rtmp>>8)
 				{
-					if (parts[i].tmp2 == 3)
+					if ((rtmp>>8) == 3)
 					{
 						for (rii = 0; rii < 4; rii++)
 						{
@@ -732,7 +732,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 							}
 						}
 					}
-					parts[i].tmp2--;
+					parts[i].tmp -= 1<<8;
 				}
 				for (rr = rii = 0; rii < 4; rii++)
 				{
@@ -745,9 +745,9 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						if ((ry & 0xFF) == PT_SPRK && parts[ry>>8].life == 3) rr |= 2;
 					}
 				}
-				if (rr && !((rctype & 1) && parts[i].tmp2))
+				if (rr && !((rctype & 1) && rtmp>>8))
 				{
-					parts[i].tmp = rr; parts[i].tmp2 = 3;
+					parts[i].tmp = rr | 3<<8;
 				}
 			}
 			break;
@@ -1185,6 +1185,24 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								if (((r&0xFF) == PT_VIBR || (r&0xFF) == PT_BVBR) && parts[r>>8].life)
 								{
 									parts[r>>8].tmp2 = 1; parts[r>>8].tmp = 0;
+								}
+								break;
+							case PT_WIFI:
+								{ // for 29-bit FILT data
+									rii = (int)((parts[r>>8].temp-73.15f)/100+1);
+									if (rii < 0) rii = 0;
+									r = pmap[ny += ry][nx += rx];
+									sim->ISWIRE = 2;
+									if ((r&0xFF) == PT_FILT)
+									{
+										rrx = parts[r>>8].ctype & 0x1FFFFFFF;
+										for (; rrx && rii < CHANNELS; rii++)
+										{
+											if (rrx & 1)
+												sim->wireless[rii][1] = 1;
+											rrx >>= 1;
+										}
+									}
 								}
 								break;
 							}
