@@ -2355,7 +2355,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 			switch (pt)
 			{
 			case PT_E186:
-				if (rlife == 5)
+				if (rlife == 5 || rlife == 10)
 					return 2; // corrected code
 				if (rlife == 17)
 					return 1;
@@ -4238,7 +4238,7 @@ void Simulation::UpdateParticles(int start, int end)
 				}
 				else
 				{
-					if (!(t == PT_PINVIS || air->bmap_blockairh[y/CELL][x/CELL]&0x8))
+					if (!(/* t == PT_PINVIS || */ air->bmap_blockairh[y/CELL][x/CELL]&0x8))
 						air->bmap_blockairh[y/CELL][x/CELL]++;
 					parts[i].temp = restrict_flt(parts[i].temp, MIN_TEMP, MAX_TEMP);
 				}
