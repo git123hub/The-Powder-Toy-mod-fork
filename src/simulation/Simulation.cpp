@@ -2162,9 +2162,9 @@ void Simulation::init_can_move()
 			can_move[movingType][PT_BVBR] = 1;
 		}
 
-		//E181 cannot be displaced by other powders
+		//SAWD cannot be displaced by other powders
 		if (elements[movingType].Properties & TYPE_PART)
-			can_move[movingType][PT_E181] = 0;
+			can_move[movingType][PT_SAWD] = 0;
 	}
 	//a list of lots of things PHOT can move through
 	// TODO: replace with property
@@ -2182,7 +2182,7 @@ void Simulation::init_can_move()
 			can_move[PT_DEST][destinationType] = 0;
 
 /*
-		if (destinationType == PT_E182 || destinationType == PT_E185  || destinationType == PT_URAN || destinationType == PT_H2   ||
+		if (destinationType == PT_POLO || destinationType == PT_POLC  || destinationType == PT_URAN || destinationType == PT_H2   ||
 			destinationType == PT_PLSM || destinationType == PT_NBLE  || destinationType == PT_CO2  || destinationType == PT_O2   ||
 			destinationType == PT_FILT || destinationType == PT_ISOZ  || destinationType == PT_ISZS || destinationType == PT_EXOT ||
 			destinationType == PT_TUNG || destinationType == PT_INVIS || destinationType == PT_SPNG || destinationType == PT_GEL  ||
@@ -2229,9 +2229,8 @@ void Simulation::init_can_move()
 	can_move[PT_EMBR][PT_EMBR] = 2;
 	can_move[PT_TRON][PT_SWCH] = 3;
 	
-	can_move[PT_ELEC][PT_E182] = 2;
-	can_move[PT_ELEC][PT_E185] = 2;
-	can_move[PT_E185][PT_YEST] = 0; // moving type = "E185", type at destination = yeast
+	can_move[PT_ELEC][PT_POLC] = 2;
+	can_move[PT_POLC][PT_YEST] = 0; // moving type = "POLC", type at destination = yeast
 
 	can_move[PT_E186][PT_BRMT] = 3;
 	
@@ -2244,6 +2243,7 @@ void Simulation::init_can_move()
 	can_move[PT_STKM][PT_E189] = 3;
 	can_move[PT_STKM2][PT_E189] = 3;
 	can_move[PT_FIGH][PT_E189] = 3;
+	restrict_can_move();
 	
 	// can_move[PT_CNCT][PT_E191] = 0;
 }
@@ -2424,6 +2424,12 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 
 	if (!e) //if no movement
 	{
+		if ((r&0xFF) == PT_WOOD)
+		{
+			float vel = std::sqrt(std::pow(parts[i].vx, 2) + std::pow(parts[i].vy, 2));
+			if (vel > 5)
+				part_change_type(r>>8, nx, ny, PT_SAWD);
+		}
 		if (!(elements[parts[i].type].Properties & TYPE_ENERGY))
 			return 0;
 		if (!legacy_enable && parts[i].type==PT_PHOT && r)//PHOT heat conduction
@@ -2434,7 +2440,8 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			if ((r & 0xFF) < PT_NUM && elements[r&0xFF].HeatConduct && ((r&0xFF)!=PT_HSWC||parts[r>>8].life==10) && (r&0xFF)!=PT_FILT)
 				parts[i].temp = parts[r>>8].temp = restrict_flt((parts[r>>8].temp+parts[i].temp)/2, MIN_TEMP, MAX_TEMP);
 		}
-		else if ((parts[i].type==PT_NEUT || parts[i].type==PT_ELEC) && ((r&0xFF)==PT_CLNE || (r&0xFF)==PT_PCLN || (r&0xFF)==PT_BCLN || (r&0xFF)==PT_PBCN)) {
+		else if ((parts[i].type==PT_NEUT || parts[i].type==PT_ELEC) && ((r&0xFF)==PT_CLNE || (r&0xFF)==PT_PCLN || (r&0xFF)==PT_BCLN || (r&0xFF)==PT_PBCN))
+		{
 			if (!parts[r>>8].ctype)
 				parts[r>>8].ctype = parts[i].type;
 		}
@@ -2930,6 +2937,18 @@ int Simulation::get_normal_interp(int pt, float x0, float y0, float dx, float dy
 	return get_normal(pt, x, y, dx, dy, nx, ny);
 }
 
+void Simulation::restrict_can_move()
+{
+	if (isFromMyMod)
+	{
+		can_move[PT_ELEC][PT_POLO] = 2;
+	}
+	else
+	{
+		can_move[PT_ELEC][PT_POLO] = 0;
+	}
+}
+
 void Simulation::kill_part(int i)//kills particle number i
 {
 	int x = (int)(parts[i].x+0.5f);
@@ -3070,16 +3089,22 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 	if (t>=0 && t<PT_NUM && !elements[t].Enabled)
 		return -1;
 
-	if (t == SPC_AIR)
+	if (t >= PT_NUM)
 	{
-		pv[y/CELL][x/CELL] += 0.03f;
+		float air_dif = 0.0f;
+		if (t == SPC_AIR)
+			air_dif = 0.03f;
+		else if (t == SPC_VACUUM)
+			air_dif = -0.03f;
+			
+		pv[y/CELL][x/CELL] += air_dif;
 		if (y+CELL<YRES)
-			pv[y/CELL+1][x/CELL] += 0.03f;
+			pv[y/CELL+1][x/CELL] += air_dif;
 		if (x+CELL<XRES)
 		{
-			pv[y/CELL][x/CELL+1] += 0.03f;
+			pv[y/CELL][x/CELL+1] += air_dif;
 			if (y+CELL<YRES)
-				pv[y/CELL+1][x/CELL+1] += 0.03f;
+				pv[y/CELL+1][x/CELL+1] += air_dif;
 		}
 		return -1;
 	}
@@ -6037,6 +6062,7 @@ Simulation::Simulation():
 	player2.comm = 0;
 	
 	sim_max_pressure = 4.0f; // on breakable wall
+	isFromMyMod = true;
 
 	init_can_move();
 	clear_sim();

@@ -166,6 +166,7 @@ void GameSave::InitVars()
 	aheatEnable = false;
 	paused = false;
 	sextraLoopsCA = false;
+	isFromMyMod = true;
 	gravityMode = 0;
 	airMode = 0;
 	edgeMode = 0;
@@ -685,6 +686,8 @@ void GameSave::readOPS(char * data, int dataLength)
 		}
 	}
 
+	isFromMyMod = (my_mod_id_2 == MOD_ID_2 || my_mod_id_2 == PARENT_MOD_ID_2);
+	
 	//Read wall and fan data
 	if(wallData)
 	{
@@ -1168,7 +1171,7 @@ void GameSave::readOPS(char * data, int dataLength)
 					case PT_PIPE:
 					case PT_PPIP:
 					case PT_STOR:
-						if (my_mod_id_2 != PARENT_MOD_ID_2)
+						if (!isFromMyMod)
 						{
 							particles[newIndex].tmp3 = particles[newIndex].pavg[0];
 							particles[newIndex].tmp4 = particles[newIndex].pavg[1];
@@ -1178,14 +1181,14 @@ void GameSave::readOPS(char * data, int dataLength)
 					case PT_VIRS:
 					case PT_VRSS:
 					case PT_VRSG:
-						if (my_mod_id_2 != PARENT_MOD_ID_2)
+						if (!isFromMyMod)
 						{
 							particles[newIndex].tmp4 = particles[newIndex].tmp2;
 							particles[newIndex].tmp2 = 0;
 						}
 						break;
-					case 185: // already used by "E185" and "LSNS"
-						if (my_mod_id_2 != PARENT_MOD_ID_2)
+					case 185: // already used by "POLC" and "LSNS"
+						if (!isFromMyMod)
 						{
 							particles[newIndex].type = PT_LSNS;
 						}
@@ -2310,11 +2313,17 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 					RESTRICTVERSION(91, 5);
 				}
 #ifdef SNAPSHOT
-				if (particles[i].type == PT_E180 || particles[i].type == PT_E181 || particles[i].type == PT_E182
+				if (particles[i].type == PT_HEAC || particles[i].type == PT_SAWD || particles[i].type == PT_POLO
+					|| particles[i].type == PT_RFRG || particles[i].type == PT_RFGL || particles[i].type == PT_LSNS
 #ifdef MOD_ID_2
-				|| particles[i].type == PT_E185 || particles[i].type == PT_E186 || particles[i].type == PT_E187 || particles[i].type == PT_E188
+					|| particles[i].type == PT_POLC || particles[i].type == PT_E186 || particles[i].type == PT_E187 || particles[i].type == PT_E188
 #endif
 				)
+				{
+					RESTRICTVERSION(92, 0);
+					fromNewerVersion = true;
+				}
+				else if ((particles[i].type == PT_FRAY || particles[i].type == PT_INVIS) && particles[i].tmp)
 				{
 					RESTRICTVERSION(92, 0);
 					fromNewerVersion = true;

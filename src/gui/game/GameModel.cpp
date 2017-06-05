@@ -655,6 +655,11 @@ void GameModel::SetSave(SaveInfo * newSave)
 		sim->aheat_enable = saveData->aheatEnable;
 		sim->extraLoopsCA = saveData->sextraLoopsCA;
 		sim->sim_max_pressure = saveData->sim_max_pressure;
+		if (sim->isFromMyMod != saveData->isFromMyMod)
+		{
+			sim->isFromMyMod = saveData->isFromMyMod;
+			sim->restrict_can_move();
+		}
 		// sim->wireless2 = saveData->PINV_wireless;
 		if(saveData->gravityEnable)
 			sim->grav->start_grav_async();
@@ -698,6 +703,11 @@ void GameModel::SetSaveFile(SaveFile * newSave)
 		sim->aheat_enable = saveData->aheatEnable;
 		sim->extraLoopsCA = saveData->sextraLoopsCA;
 		sim->sim_max_pressure = saveData->sim_max_pressure;
+		if (sim->isFromMyMod != saveData->isFromMyMod)
+		{
+			sim->isFromMyMod = saveData->isFromMyMod;
+			sim->restrict_can_move();
+		}
 		// sim->wireless2 = saveData->PINV_wireless;
 		if(saveData->gravityEnable && !sim->grav->ngrav_enable)
 		{
@@ -1014,6 +1024,11 @@ void GameModel::ClearSimulation()
 	sim->legacy_enable = false;
 	sim->water_equal_test = false;
 	sim->SetEdgeMode(edgeMode);
+	if (!sim->isFromMyMod)
+	{
+		sim->isFromMyMod = true;
+		sim->restrict_can_move();
+	}
 
 	sim->clear_sim();
 	ren->ClearAccumulation();
