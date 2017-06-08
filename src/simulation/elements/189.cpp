@@ -62,6 +62,9 @@ bool Element_E189::useDefaultPart = false;
 //#TPT-Directive ElementHeader Element_E189 static int Arrow_keys
 int Element_E189::Arrow_keys = 0; // Note: TPT uses SDL
 
+//#TPT-Directive ElementHeader Element_E189 static int maxPrior
+int Element_E189::maxPrior = 0;
+
 //#TPT-Directive ElementHeader Element_E189 static void HSV2RGB(int ctype, int *r, int *g, int *b)
 void Element_E189::HSV2RGB (int ctype, int *r, int *g, int *b)
 {
@@ -189,8 +192,6 @@ void Element_E189::interactDir(Simulation* sim, int i, int x, int y, Particle* p
 	{
 		switch (rtmp2)
 		{
-			case 0: // no photons operation
-				break;
 			case 1: // 50% turn left
 				if (rand() & 1)
 				{
@@ -327,6 +328,11 @@ void Element_E189::interactDir(Simulation* sim, int i, int x, int y, Particle* p
 					if (part_phot->life < 0)
 						part_phot->life = 0;
 				}
+				break;
+			case 18: // photons diode output
+				part_phot->tmp2 = part_phot->ctype;
+				part_phot->ctype = 0x100;
+				sim->part_change_type(i, x, y, PT_E186);
 				break;
 		}
 	}
