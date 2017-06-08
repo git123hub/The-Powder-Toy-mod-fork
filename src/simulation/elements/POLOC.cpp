@@ -32,7 +32,7 @@ Element_POLC::Element_POLC()
 
 	Weight = 90;
 
-	Temperature = R_TEMP+4.0f	+273.15f;
+	Temperature = 388.15f; 
 	HeatConduct = 251;
 	Description = "Experimental element. Some kind of nuclear fuel, POLO decay catalyst, or replicating powder";
 
@@ -313,7 +313,7 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 				{
 					parts[i].life = cooldown;
 					parts[i].tmp = 1;
-					if (parts[i].temp < 450.0f)
+					if (parts[i].temp < 520.0f)
 						parts[i].temp += 5.0f;
 					parts[s].temp = parts[i].temp;
 					if (sctype == PT_GRVT)
@@ -336,7 +336,7 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 					s = sim->create_part(-3, x, y, PT_E186);
 				parts[i].life = cooldown;
 				parts[i].tmp ++;
-				if (parts[i].temp < 450.0f)
+				if (parts[i].temp < 520.0f)
 					parts[i].temp += 5.0f;
 
 				parts[rr>>8].temp = parts[i].temp;
@@ -367,6 +367,7 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 						if (rand()%4)
 						{
 							parts[i].tmp = 0;
+							parts[i].tmp2 = 0; // clear absorbed PROT?
 							parts[r>>8].temp = (R_TEMP+273.15f);
 						}
 						parts[r>>8].tmp = 0;

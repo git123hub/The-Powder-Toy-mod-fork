@@ -7,11 +7,7 @@ Element_E186::Element_E186()
 	Colour = PIXPACK(0xDFEFFF);
 	MenuVisible = 0;
 	MenuSection = SC_NUCLEAR;
-#if defined(DEBUG) || defined(SNAPSHOT)
 	Enabled = 1;
-#else
-	Enabled = 0;
-#endif
 
 	Advection = 0.0f;
 	AirDrag = 0.00f * CFDS;
@@ -121,10 +117,10 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 	{
 		if (!(rand()%60))
 		{
-			if (!sctype)
+			if (!sctype || sctype == PT_E186)
 				s = sim->create_part(-3, x, y, PT_ELEC);
 			else
-				s = sim->create_part(-3, x, y, sctype);
+				s = sim->create_part(-1, x, y, sctype);
 			if(s >= 0)
 			{
 				parts[i].temp += 400.0f;
@@ -225,21 +221,28 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 				break;
 			case PT_INVIS:
 				parts[i].ctype = PT_NEUT;
+			case PT_PLUT:
+				if (parts[r>>8].tmp2 > 0)
+				{
+					parts[r>>8].tmp2 = 0;
+					sim->part_change_type(r>>8, x, y, PT_POLO);
+				}
+				break;
 			case PT_SPNG:
 				sim->part_change_type(r>>8, x, y, PT_GEL);
 				parts[r>>8].tmp = parts[r>>8].life;
 				break;
 			/* viruses has replication? */
 			case PT_VRSS:
-				if (parts[i].tmp2 == PT_EXOT) // if is infected EXOT
+				if (parts[r>>8].tmp2 == PT_EXOT) // if is infected EXOT
 					sim->create_part(r>>8, x, y, PT_CLNE);
-				else if (parts[i].tmp2 == PT_ETRD) // if is infected ETRD
+				else if (parts[r>>8].tmp2 == PT_ETRD) // if is infected ETRD
 					sim->create_part(r>>8, x, y, PT_PCLN);
 				break;
 			case PT_VIRS:
-				if (parts[i].tmp2 == PT_EXOT) // if is infected EXOT
+				if (parts[r>>8].tmp2 == PT_EXOT) // if is infected EXOT
 					sim->create_part(r>>8, x, y, PT_BCLN);
-				else if (parts[i].tmp2 == PT_ETRD) // if is infected ETRD
+				else if (parts[r>>8].tmp2 == PT_ETRD) // if is infected ETRD
 					sim->create_part(r>>8, x, y, PT_PBCN);
 				break;
 			default:
