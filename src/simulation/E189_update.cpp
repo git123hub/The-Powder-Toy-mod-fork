@@ -1590,20 +1590,27 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					r >>= 8;
 					if (rt == PT_SPRK)
 					{
+						// 由于 "&" 和 "==" 的优先级高于 "&&".
+						// 并且 "&", "&&" 和 "!=" 的优先级高于 "||".
 						rctype = parts[r].ctype;
-						if (rtmp & 0x100 && rctype == PT_SWCH) // 由于 "&" 和 "==" 的优先级高于 "&&".
+						if (rctype == PT_SWCH)
 						{
-							sim->part_change_type(r, x+rx, y+ry, PT_SWCH);
-							parts[r].life = 9;
-							parts[r].ctype = 0; // clear .ctype value
+							if (rtmp & 0x100)
+							{
+								sim->part_change_type(r, x+rx, y+ry, PT_SWCH);
+								parts[r].life = 9;
+								parts[r].ctype = 0; // clear .ctype value
+							}
+							else if (rtmp & 1)
+								parts[i].tmp |= 0x100;
 						}
-						else if (parts[r].life == 3 && (rtmp & 1 || rctype != PT_SWCH)) // 由于 "&", "&&" 和 "!=" 的优先级高于 "||".
+						else if (parts[r].life == 3) 
 							parts[i].tmp |= 0x100;
 					}
 					else if (rt == PT_SWCH && rtmp & 0x100)
 					{
 						if (parts[r].life < 10)
-							parts[r].life = 10;
+							parts[r].life = (r > i ? 15 : 14);
 						else
 							parts[r].life = 9;
 					}
