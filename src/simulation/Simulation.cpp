@@ -2324,12 +2324,15 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 			else
 				result = 0;
 		}
-		else if (pt == PT_TRON && (r&0xFF) == PT_SWCH)
+		else if ((r&0xFF) == PT_SWCH)
 		{
-			if (parts[r>>8].life >= 10)
-				return 2;
-			else
-				return 0;
+			if (pt == PT_TRON)
+			{
+				if (parts[r>>8].life >= 10)
+					return 2;
+				else
+					return 0;
+			}
 		}
 		else if ((r&0xFF) == PT_E189)
 		{
@@ -2470,7 +2473,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 
 	if (e == 2) //if occupy same space
 	{
-		switch (parts[i].type)
+		switch (parts[i].type) // maybe jump table or binary search?
 		{
 		case PT_PHOT:  // type = 31
 			switch (r&0xFF)
@@ -2591,6 +2594,14 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			if ((r&0xFF) == PT_FILT)
 				parts[i].ctype = Element_FILT::interactWavelengths(&parts[r>>8], parts[i].ctype);
 			break;
+		case PT_E186:
+			if (parts[i].ctype == 0x100 && (r&0xFF) != PT_E189) // exit from E189 area
+			{
+				parts[i].ctype = parts[i].tmp2;
+				parts[i].tmp2 = 0;
+				/* sim-> */ part_change_type(i, x, y, PT_PHOT);
+			}
+			break;
 		}
 		return 1;
 	}
@@ -2654,9 +2665,16 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 	}
 	else if (parts[i].type == PT_CNCT)
 	{
-		rr = (pmap[y+1][x] & 0xFF);
-		if (y<ny && (rr == PT_CNCT)) // check below CNCT for another CNCT
-			return 0;
+		if (y<ny)
+		{
+			rr = pmap[y+1][x];
+			/*
+			if ((rr&0xFF) == PT_PINVIS)
+				rr = parts[rr>>8].tmp4;
+			*/
+			if ((rr&0xFF) == PT_CNCT) // check below CNCT for another CNCT
+				return 0;
+		}
 	}
 	else if(parts[i].type == PT_GBMB)
 	{
@@ -4790,7 +4808,7 @@ killed:
 						goto movedone;
 				}
 				// liquids and powders
-				if (!do_move(i, x, y, fin_xf, fin_yf))
+				if (!do_move(i, x, y, fin_xf, fin_yf)) // stagnanted?
 				{
 					if (parts[i].type == PT_NONE)
 						continue;
@@ -4837,7 +4855,7 @@ killed:
 								goto movedone;
 							}
 						}
-						if (elements[t].Falldown>1 && !grav->ngrav_enable && gravityMode==0 && parts[i].vy>fabsf(parts[i].vx))
+						if (elements[t].Falldown>1 && !grav->ngrav_enable && gravityMode==0 && parts[i].vy>fabsf(parts[i].vx)) // liquid movement
 						{
 							s = 0;
 							// stagnant is true if FLAG_STAGNANT was set for this particle in previous frame
@@ -4886,7 +4904,7 @@ killed:
 							parts[i].vx *= elements[t].Collision;
 							parts[i].vy *= elements[t].Collision;
 						}
-						else if (elements[t].Falldown>1 && fabsf(pGravX*parts[i].vx+pGravY*parts[i].vy)>fabsf(pGravY*parts[i].vx-pGravX*parts[i].vy))
+						else if (elements[t].Falldown>1 && fabsf(pGravX*parts[i].vx+pGravY*parts[i].vy)>fabsf(pGravY*parts[i].vx-pGravX*parts[i].vy)) // liquid movement
 						{
 							float nxf, nyf, prev_pGravX, prev_pGravY, ptGrav = elements[t].Gravity;
 							s = 0;

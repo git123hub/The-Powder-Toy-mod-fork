@@ -1306,6 +1306,8 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 						{
 							if ((r & 0xFF) == PT_INST)
 								sim->FloodINST(x+rx,y+ry,PT_SPRK,PT_INST);
+							else if ((r & 0xFF) == PT_SWCH)
+								conductToSWCH (sim, r, x+rx, y+ry, parts);
 							else if (sim->elements[r & 0xFF].Properties & PROP_CONDUCTS)
 								conductTo (sim, r, x+rx, y+ry, parts);
 						}
@@ -1446,32 +1448,29 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 			}
 			goto continue1a;
 		case 23: // powered BTRY
+			for (rx=-2; rx<3; rx++)
+			for (ry=-2; ry<3; ry++)
+			if (BOUNDS_CHECK && (rx || ry) && abs(rx)+abs(ry) < 4)
 			{
-				int old_tmp = rtmp;
-				for (rx=-2; rx<3; rx++)
-				for (ry=-2; ry<3; ry++)
-				if (BOUNDS_CHECK && (rx || ry) && abs(rx)+abs(ry) < 4)
+				r = pmap[y+ry][x+rx];
+				if (!r)
+					continue;
+				pavg = sim->parts_avg(i,r>>8,PT_INSL);
+				if (pavg != PT_INSL && pavg != PT_INDI)
 				{
-					r = pmap[y+ry][x+rx];
-					if (!r)
-						continue;
-					pavg = sim->parts_avg(i,r>>8,PT_INSL);
-					if (pavg != PT_INSL && pavg != PT_INDI)
+					rt = (r&0xFF);
+					if (rt == PT_SPRK && parts[r>>8].life == 3)
 					{
-						rt = (r&0xFF);
-						if (rt == PT_SPRK && parts[r>>8].life == 3)
+						switch (parts[r>>8].ctype)
 						{
-							switch (parts[r>>8].ctype)
-							{
-								case PT_NSCN: parts[i].tmp = 0; break;
-								case PT_PSCN: parts[i].tmp = 1; break;
-								case PT_INST: parts[i].tmp = !parts[i].tmp; break;
-							}
+							case PT_NSCN: parts[i].tmp = 0; break;
+							case PT_PSCN: parts[i].tmp = 1; break;
+							case PT_INST: parts[i].tmp = !parts[i].tmp; break;
 						}
-						else if (old_tmp && rt != PT_PSCN && rt != PT_NSCN &&
-							(sim->elements[rt].Properties&(PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
-							conductTo (sim, r, x+rx, y+ry, parts);
 					}
+					else if (rtmp && rt != PT_PSCN && rt != PT_NSCN &&
+						(sim->elements[rt].Properties&(PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
+						conductTo (sim, r, x+rx, y+ry, parts);
 				}
 			}
 			return return_value;
@@ -1513,7 +1512,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 								rt = rr & 0xFF;
 								if (rt == PT_SPRK)
 									rt = parts[rr>>8].ctype;
-								if (rt && rt != PT_INWR && rt != PT_FILT && rt != PT_STOR && rt != PT_BIZR && rt != PT_BIZRG && rt != PT_BIZRS && rt != PT_GOO)
+								if (rt && rt != PT_INWR && rt != PT_FILT && rt != PT_STOR && rt != PT_BIZR && rt != PT_BIZRG && rt != PT_BIZRS && rt != PT_GOO && rt != PT_BRAY)
 									break;
 								pmap[ny][nx] = 0; // clear pmap
 								Element_PSTN::tempParts[rrx] = rr;
@@ -1575,6 +1574,42 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 				}
 			}
 			return return_value;
+		case 26: // SWCH toggler
+			parts[i].tmp &= ~0x100;
+			for (rx=-2; rx<3; rx++)
+			for (ry=-2; ry<3; ry++)
+			if (BOUNDS_CHECK && (rx || ry) && abs(rx)+abs(ry) < 4)
+			{
+				r = pmap[y+ry][x+rx];
+				if (!r)
+					continue;
+				pavg = sim->parts_avg(i,r>>8,PT_INSL);
+				if (pavg != PT_INSL && pavg != PT_INDI)
+				{
+					rt = r & 0xFF;
+					r >>= 8;
+					if (rt == PT_SPRK)
+					{
+						rctype = parts[r].ctype;
+						if (rtmp & 0x100 && rctype == PT_SWCH) // 由于 "&" 和 "==" 的优先级高于 "&&".
+						{
+							sim->part_change_type(r, x+rx, y+ry, PT_SWCH);
+							parts[r].life = 9;
+							parts[r].ctype = 0; // clear .ctype value
+						}
+						else if (parts[r].life == 3 && (rtmp & 1 || rctype != PT_SWCH)) // 由于 "&", "&&" 和 "!=" 的优先级高于 "||".
+							parts[i].tmp |= 0x100;
+					}
+					else if (rt == PT_SWCH && rtmp & 0x100)
+					{
+						if (parts[r].life < 10)
+							parts[r].life = 10;
+						else
+							parts[r].life = 9;
+					}
+				}
+			}
+			break;
 		}
 		break;
 			
