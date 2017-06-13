@@ -2253,6 +2253,7 @@ void Simulation::init_can_move()
 1 = Swap
 0 = No move/Bounce
 2 = Both particles occupy the same space.
+4 = Swap without slowing down (not eaten)
  */
 int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 {
@@ -2274,40 +2275,39 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 	if (pt>=PT_NUM || (r&0xFF)>=PT_NUM)
 		return 0;
 	result = can_move[pt][r&0xFF];
-	if (result==3)
+	if (result == 3)
 	{
-		if ((r&0xFF) == PT_LCRY)
-		{
+		switch (r&0xFF)
+  		{
+		case PT_LCRY:
 			if (pt==PT_PHOT || pt==PT_ELEC)
 				result = (parts[r>>8].life > 5)? 2 : 0;
-		}
-		else if ((r&0xFF) == PT_GPMP)
-		{
+			break;
+		case PT_GPMP:
 			if (pt == PT_PHOT)
 				result = (parts[r>>8].life < 10) ? 2 : 0;
-		}
-		else if ((r&0xFF) == PT_INVIS)
-		{
-			float pressureResistance = 0.0f;
-			if (parts[r>>8].tmp > 0)
-				pressureResistance = (float)parts[r>>8].tmp;
-			else
-				pressureResistance = sim_max_pressure;
+			break;
+		case PT_INVIS:
+			{
+				float pressureResistance = 0.0f;
+				if (parts[r>>8].tmp > 0)
+					pressureResistance = (float)parts[r>>8].tmp;
+				else
+					pressureResistance = sim_max_pressure;
 
-			if (pv[ny/CELL][nx/CELL] < -pressureResistance || pv[ny/CELL][nx/CELL] > pressureResistance)
-				result = 2;
-			else
-				result = 0;
-		}
-		else if ((r&0xFF) == PT_PINVIS)
-		{
+				if (pv[ny/CELL][nx/CELL] < -pressureResistance || pv[ny/CELL][nx/CELL] > pressureResistance)
+					result = 2;
+				else
+					result = 0;
+			}
+			break;
+		case PT_PINVIS:
 			if (parts[r>>8].life >= 10)
 				result = 2;
 			else
 				result = 0;
-		}
-		else if ((r&0xFF) == PT_PVOD)
-		{
+			break;
+		case PT_PVOD:
 			if (parts[r>>8].life == 10)
 			{
 				if (!parts[r>>8].ctype || (parts[r>>8].ctype==pt)!=(parts[r>>8].tmp&1))
@@ -2316,16 +2316,14 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 					result = 0;
 			}
 			else result = 0;
-		}
-		else if ((r&0xFF) == PT_VOID)
-		{
+			break;
+		case PT_VOID:
 			if (!parts[r>>8].ctype || (parts[r>>8].ctype==pt)!=(parts[r>>8].tmp&1))
 				result = 1;
 			else
 				result = 0;
-		}
-		else if ((r&0xFF) == PT_SWCH)
-		{
+			break;
+		case PT_SWCH:
 			if (pt == PT_TRON)
 			{
 				if (parts[r>>8].life >= 10)
@@ -2333,68 +2331,77 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				else
 					return 0;
 			}
-		}
-		else if ((r&0xFF) == PT_E189)
-		{
-			int rlife = parts[r>>8].life, tmp_flag = parts[r>>8].tmp;
-			switch (rlife)
+			break;
+		case PT_E189:
 			{
-			case 16:
-				if (parts[r>>8].ctype == 5)
+				int rlife = parts[r>>8].life, tmp_flag = parts[r>>8].tmp;
+				switch (rlife)
 				{
-					if ((tmp_flag & 1) && pt == PT_STKM)
+				case 16:
+					if (parts[r>>8].ctype == 5)
+					{
+						if ((tmp_flag & 1) && pt == PT_STKM)
+							return 2;
+						if ((tmp_flag & 2) && pt == PT_STKM2)
+							return 2;
+						if ((tmp_flag & 4) && pt == PT_FIGH)
+							return 2;
+					}
+					break;
+				case 27: 
+					if ((tmp_flag & 1) && (pt == PT_STKM || pt == PT_STKM2 || pt == PT_FIGH))
 						return 2;
-					if ((tmp_flag & 2) && pt == PT_STKM2)
-						return 2;
-					if ((tmp_flag & 4) && pt == PT_FIGH)
-						return 2;
+					break;
 				}
-				break;
-			case 27: 
-				if ((tmp_flag & 1) && (pt == PT_STKM || pt == PT_STKM2 || pt == PT_FIGH))
-					return 2;
-				break;
-			}
-			switch (pt)
-			{
-			case PT_E186:
-				if (rlife == 5 || rlife == 10)
+				switch (pt)
+				{
+				case PT_E186:
+					if (rlife == 5 || rlife == 10)
+						return 2; // corrected code
+					if (rlife == 17)
+						return 1;
+					return 0;
+				case PT_PROT:
+					if (rlife == 15)
+						return 0;
 					return 2; // corrected code
-				if (rlife == 17)
-					return 1;
-				return 0;
-			case PT_PROT:
-				if (rlife == 15)
+				case PT_NEUT:
+					if (rlife == 5 || rlife == 22 && (tmp_flag & 1))
+						return 2;
 					return 0;
-				return 2; // corrected code
-			case PT_NEUT:
-				if (rlife == 5 || rlife == 22 && (tmp_flag & 1))
-					return 2;
-				return 0;
-			case PT_ELEC:
-				if (rlife == 5 || rlife == 22 && (tmp_flag & 2))
-					return 2;
-				return 0;
-			case PT_GRVT:
-				if (rlife == 22 && (tmp_flag & 4))
+				case PT_ELEC:
+					if (rlife == 5 || rlife == 22 && (tmp_flag & 2))
+						return 2;
 					return 0;
-				return 2;
+				case PT_GRVT:
+					if (rlife == 22 && (tmp_flag & 4))
+						return 0;
+					return 2;
+				}
 			}
-			return 0; // otherwise
-		}
-		else if (pt == PT_E186 && (r&0xFF) == PT_BRMT)
-		{
-			if (parts[r>>8].ctype == PT_TUNG)
-				return 2;
-			else
-				return 0;
-		}
-		else if (pt == PT_DEST && (r&0xFF) == PT_SPRK)
-		{
-			if (elements[parts[r>>8].ctype].Properties2 & PROP_NODESTRUCT)
-				return 0;
-			else
-				return 1;
+			return 0; // otherwise. Note using "return", no "break".
+		case PT_BRMT:
+			if (pt == PT_E186)
+			{
+				if (parts[r>>8].ctype == PT_TUNG)
+					result = 2;
+				else
+					result = 0;
+			}
+			break;
+		case PT_SPRK:
+			if (pt == PT_DEST)
+			{
+				if (elements[parts[r>>8].ctype].Properties2 & PROP_NODESTRUCT)
+					return 0;
+				else
+					return 4;
+			}
+			break;
+		default:
+			// This should never happen
+			// If it were to happen, try_move would interpret a 3 as a 1
+			result =  1;
 		}
 	}
 	if (bmap[ny/CELL][nx/CELL])
@@ -2476,6 +2483,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		switch (parts[i].type) // maybe jump table or binary search?
 		{
 		case PT_PHOT:  // type = 31
+		{
 			switch (r&0xFF)
 			{
 			case PT_PINVIS:
@@ -2573,6 +2581,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				break;
 			}
 			break;
+		}
 		case PT_NEUT:  // type = 18
 			if ((r&0xFF) == PT_GLAS || (r&0xFF) == PT_BGLA)
 				if (rand() < RAND_MAX/10)
@@ -2605,37 +2614,38 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		}
 		return 1;
 	}
-	//else e=1 , we are trying to swap the particles, return 0 no swap/move, 1 is still overlap/move, because the swap takes place later
+	// else e=1 , we are trying to swap the particles, return 0 no swap/move, 1 is still overlap/move, because the swap takes place later
 
-	if ((r&0xFF)==PT_VOID || (r&0xFF)==PT_PVOD) //this is where void eats particles
+	switch (r&0xFF)
 	{
-		//void ctype already checked in eval_move
+	case PT_VOID:
+	case PT_PVOD:
+		// this is where void eats particles
+		// void ctype already checked in eval_move
 		kill_part(i);
 		return 0;
-	}
-	else if ((r&0xFF)==PT_BHOL || (r&0xFF)==PT_NBHL) //this is where blackhole eats particles
-	{
+	case PT_BHOL:
+	case PT_NBHL:
+		// this is where blackhole eats particles
 		if (!legacy_enable)
 		{
 			parts[r>>8].temp = restrict_flt(parts[r>>8].temp+parts[i].temp/2, MIN_TEMP, MAX_TEMP);//3.0f;
 		}
 		kill_part(i);
 		return 0;
-	}
-	else if (((r&0xFF)==PT_WHOL || (r&0xFF)==PT_NWHL)) //whitehole eats anar
-	{
+	case PT_WHOL:
+	case PT_NWHL:
 		if (parts[i].type == PT_ANAR)
 		{
 			if (!legacy_enable)
 			{
-				parts[r>>8].temp = restrict_flt(parts[r>>8].temp- (MAX_TEMP-parts[i].temp)/2, MIN_TEMP, MAX_TEMP);
+				parts[r>>8].temp = restrict_flt(parts[r>>8].temp - (MAX_TEMP-parts[i].temp)/2, MIN_TEMP, MAX_TEMP);
 			}
 			kill_part(i);
 			return 0;
 		}
-	}
-	else if ((r&0xFF)==PT_DEUT)
-	{
+		break;
+	case PT_DEUT:
 		if (parts[i].type == PT_ELEC)
 		{
 			if(parts[r>>8].life < 6000)
@@ -2644,27 +2654,35 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			kill_part(i);
 			return 0;
 		}
-	}
-	else if (((r&0xFF)==PT_VIBR || (r&0xFF)==PT_BVBR))
-	{
+		break;
+	case PT_VIBR:
+	case PT_BVBR:
 		if ((elements[parts[i].type].Properties2 & PROP_ENERGY_PART))
 		{
 			parts[r>>8].tmp += 20;
 			kill_part(i);
 			return 0;
 		}
+		break;
+	case PT_E189:
+		if (parts[i].type == PT_E186) // PT_E189 (life=17) eats PT_E186
+		{
+			kill_part(i);
+			return 0;
+		}
+		break;
 	}
-
-	if (parts[i].type == PT_NEUT)
-	{
+	
+	switch (parts[i].type)
+  	{
+	case PT_NEUT:
 		if (elements[r & 0xFF].Properties & PROP_NEUTABSORB)
 		{
 			kill_part(i);
 			return 0;
 		}
-	}
-	else if (parts[i].type == PT_CNCT)
-	{
+		break;
+	case PT_CNCT:
 		if (y<ny)
 		{
 			rr = pmap[y+1][x];
@@ -2675,16 +2693,11 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			if ((rr&0xFF) == PT_CNCT) // check below CNCT for another CNCT
 				return 0;
 		}
-	}
-	else if(parts[i].type == PT_GBMB)
-	{
+		break;
+	case PT_GBMB:
 		if (parts[i].life>0)
 			return 0;
-	}
-	else if(parts[i].type == PT_E186 && (r&0xFF) == PT_E189) // PT_E189 (life=17) eats PT_E186
-	{
-		kill_part(i);
-		return 0;
+		break;
 	}
 
 	if ((bmap[y/CELL][x/CELL]==WL_EHOLE && !emap[y/CELL][x/CELL]) && !(bmap[ny/CELL][nx/CELL]==WL_EHOLE && !emap[ny/CELL][nx/CELL]))
@@ -2963,6 +2976,19 @@ void Simulation::restrict_can_move()
 	else
 	{
 		can_move[PT_ELEC][PT_POLO] = 0;
+	}
+	if (isFromMyMod != isPrevFromMyMod)
+	{
+		int t;
+
+		t = elements[PT_PIPE].HighPressureTransition;
+		elements[PT_PIPE].HighPressureTransition = temporary_sim_variable[0];
+		temporary_sim_variable[0] = t;
+		t = elements[PT_WIFI].HighPressureTransition;
+		elements[PT_WIFI].HighPressureTransition = temporary_sim_variable[1];
+		temporary_sim_variable[1] = t;
+
+		isPrevFromMyMod = isFromMyMod;
 	}
 }
 
@@ -3336,276 +3362,276 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 	}
 
 	switch (t)
+	{
+	case PT_SOAP:
+		parts[i].tmp = -1;
+		parts[i].tmp2 = -1;
+		break;
+	case PT_ACID: case PT_CAUS:
+		parts[i].life = 75;
+		break;
+	/*Testing
+	case PT_WOOD:
+		parts[i].life = 150;
+		break;
+	End Testing*/
+	case PT_WARP:
+		parts[i].life = rand()%95+70;
+		break;
+	case PT_FUSE:
+		parts[i].life = 50;
+		parts[i].tmp = 50;
+		break;
+	case PT_LIFE:
+		if (v < NGOL)
 		{
-			case PT_SOAP:
-				parts[i].tmp = -1;
-				parts[i].tmp2 = -1;
-				break;
-			case PT_ACID: case PT_CAUS:
-				parts[i].life = 75;
-				break;
-			/*Testing
-			case PT_WOOD:
-				parts[i].life = 150;
-				break;
-			End Testing*/
-			case PT_WARP:
-				parts[i].life = rand()%95+70;
-				break;
-			case PT_FUSE:
-				parts[i].life = 50;
-				parts[i].tmp = 50;
-				break;
-			case PT_LIFE:
-				if (v<NGOL)
-				{
-					parts[i].tmp = grule[v+1][9] - 1;
-					parts[i].ctype = v;
-				}
-				break;
-			case PT_DEUT:
-				parts[i].life = 10;
-				break;
-			case PT_MERC:
-				parts[i].tmp = 10;
-				break;
-			case PT_BRAY:
-				parts[i].life = 30;
-				break;
-			case PT_GPMP: case PT_PUMP:
-				parts[i].life = 10;
-				break;
-			case PT_SING:
-				parts[i].life = rand()%50+60;
-				break;
-			case PT_QRTZ:
-			case PT_PQRT:
-				parts[i].tmp2 = (rand()%11);
-				break;
-			case PT_CLST:
-				parts[i].tmp = (rand()%7);
-				break;
-			case PT_FSEP:
-				parts[i].life = 50;
-				break;
-			case PT_COAL:
-				parts[i].life = 110;
-				parts[i].tmp = 50;
-				break;
-			case PT_IGNT:
-				parts[i].life = 3;
-				break;
-			case PT_FRZW:
-				parts[i].life = 100;
-				break;
-			case PT_PPIP:
-			case PT_PIPE:
-				parts[i].life = 60;
-				break;
-			case PT_BCOL:
-				parts[i].life = 110;
-				break;
-			case PT_FIRE:
-				parts[i].life = rand()%50+120;
-				break;
-			case PT_PLSM:
-				parts[i].life = rand()%150+50;
-				break;
-			case PT_CFLM:
-				parts[i].life = rand()%150+50;
-				break;
-			case PT_LAVA:
-				parts[i].life = rand()%120+240;
-				break;
-			case PT_NBLE:
-				parts[i].life = 0;
-				break;
-			case PT_ICEI:
-				parts[i].ctype = PT_WATR;
-				break;
-			case PT_MORT:
-				parts[i].vx = 2;
-				break;
-			case PT_EXOT:
-				parts[i].life = 1000;
-				parts[i].tmp = 244;
-				break;
-			case PT_EMBR:
-				parts[i].life = 50;
-				break;
-			case PT_TESC:
-				parts[i].tmp = v;
-				if (parts[i].tmp > 300)
-					parts[i].tmp=300;
-				break;
-			case PT_BIZR: case PT_BIZRG: case PT_BIZRS:
-				parts[i].ctype = 0x47FFFF;
-				break;
-			case PT_DTEC:
-			case PT_TSNS:
-			case PT_LSNS:
-				parts[i].tmp2 = 2;
-				break;
-			case PT_VINE:
-				parts[i].tmp = 1;
-				break;
-			case PT_VIRS:
-			case PT_VRSS:
-			case PT_VRSG:
-				parts[i].pavg[1] = 250;
-				break;
-			case PT_CRMC:
-				parts[i].tmp2 = (rand() % 5);
-				break;
-			case PT_ETRD:
-				etrd_life0_count++;
-				break;
-			case PT_STKM:
-			{
-				if (player.spwn == 0)
-				{
-					parts[i].life = 100;
-					Element_STKM::STKM_init_legs(this, &player, i);
-					player.spwn = 1;
-					player.rocketBoots = false;
-				}
-				else
-				{
-					parts[i].type = 0;
-					return -1;
-				}
-				int spawnID = create_part(-3, x, y, PT_SPAWN);
-				if (spawnID >= 0)
-					player.spawnID = spawnID;
-				break;
-			}
-			case PT_STKM2:
-			{
-				if (player2.spwn==0)
-				{
-					parts[i].life = 100;
-					Element_STKM::STKM_init_legs(this, &player2, i);
-					player2.spwn = 1;
-					player2.rocketBoots = false;
-				}
-				else
-				{
-					parts[i].type=0;
-					return -1;
-				}
-				int spawnID = create_part(-3, x, y, PT_SPAWN2);
-				if (spawnID >= 0)
-					player2.spawnID = spawnID;
-				break;
-			}
-			case PT_FIGH:
-			{
-				unsigned char fcount = 0;
-				while (fcount < MAX_FIGHTERS && fcount < (fighcount+1) && fighters[fcount].spwn==1) fcount++;
-				if (fcount < MAX_FIGHTERS && fighters[fcount].spwn==0)
-				{
-					parts[i].life = 100;
-					parts[i].tmp = fcount;
-					Element_STKM::STKM_init_legs(this, &fighters[fcount], i);
-					fighters[fcount].spwn = 1;
-					fighters[fcount].elem = PT_DUST;
-					fighters[fcount].rocketBoots = false;
-					fighcount++;
-					return i;
-				}
-				parts[i].type=0;
-				return -1;
-			}
-			case PT_PHOT:
-			{
-				float a = (rand()%8) * 0.78540f;
-				parts[i].life = 680;
-				parts[i].ctype = 0x3FFFFFFF;
-				parts[i].vx = 3.0f*cosf(a);
-				parts[i].vy = 3.0f*sinf(a);
-				if ((pmap[y][x]&0xFF) == PT_FILT)
-					parts[i].ctype = Element_FILT::interactWavelengths(&parts[pmap[y][x]>>8], parts[i].ctype);
-				break;
-			}
-			case PT_ELEC:
-			case PT_E186:
-			{
-				float a = (rand()%360)*3.14159f/180.0f;
-				parts[i].life = 680;
-				parts[i].vx = 2.0f*cosf(a);
-				parts[i].vy = 2.0f*sinf(a);
-				break;
-			}
-			case PT_NEUT:
-			{
-				float r = (rand()%128+128)/127.0f;
-				float a = (rand()%360)*3.14159f/180.0f;
-				parts[i].life = rand()%480+480;
-				parts[i].vx = r*cosf(a);
-				parts[i].vy = r*sinf(a);
-				break;
-			}
-			case PT_PROT:
-			{
-				float a = (rand()%36)* 0.17453f;
-				parts[i].life = 680;
-				parts[i].vx = 2.0f*cosf(a);
-				parts[i].vy = 2.0f*sinf(a);
-				break;
-			}
-			case PT_GRVT:
-			{
-				float a = (rand()%360)*3.14159f/180.0f;
-				parts[i].life = 250 + rand()%200;
-				parts[i].vx = 2.0f*cosf(a);
-				parts[i].vy = 2.0f*sinf(a);
-				parts[i].tmp = 7;
-				break;
-			}
-			case PT_TRON:
-			{
-				int randhue = rand()%360;
-				int randomdir = rand()%4;
-				parts[i].tmp = 1|(randomdir<<5)|(randhue<<7);//set as a head and a direction
-				parts[i].tmp2 = 4;//tail
-				parts[i].life = 5;
-				break;
-			}
-			case PT_LIGH:
-			{
-				float gx, gy, gsize;
-
-				if (v >= 0)
-				{
-					if (v > 55)
-						v = 55;
-					parts[i].life = v;
-				}
-				else
-					parts[i].life = 30;
-				parts[i].temp = parts[i].life*150.0f; // temperature of the lightning shows the power of the lightning
-				GetGravityField(x, y, 1.0f, 1.0f, gx, gy);
-				gsize = gx*gx+gy*gy;
-				if (gsize<0.0016f)
-				{
-					float angle = (rand()%6284)*0.001f;//(in radians, between 0 and 2*pi)
-					gsize = sqrtf(gsize);
-					// randomness in weak gravity fields (more randomness with weaker fields)
-					gx += cosf(angle)*(0.04f-gsize);
-					gy += sinf(angle)*(0.04f-gsize);
-				}
-				parts[i].tmp = (((int)(atan2f(-gy, gx)*(180.0f/M_PI)))+rand()%40-20+360)%360;
-				parts[i].tmp2 = 4;
-				break;
-			}
-			case PT_E189:
-			{
-				parts[i].life = v;
-				break;
-			}
-			default:
-				break;
+			parts[i].tmp = grule[v+1][9] - 1;
+			parts[i].ctype = v;
 		}
+		break;
+	case PT_DEUT:
+		parts[i].life = 10;
+		break;
+	case PT_MERC:
+		parts[i].tmp = 10;
+		break;
+	case PT_BRAY:
+		parts[i].life = 30;
+		break;
+	case PT_GPMP: case PT_PUMP:
+		parts[i].life = 10;
+		break;
+	case PT_SING:
+		parts[i].life = rand()%50+60;
+		break;
+	case PT_QRTZ:
+	case PT_PQRT:
+		parts[i].tmp2 = (rand()%11);
+		break;
+	case PT_CLST:
+		parts[i].tmp = (rand()%7);
+		break;
+	case PT_FSEP:
+		parts[i].life = 50;
+		break;
+	case PT_COAL:
+		parts[i].life = 110;
+		parts[i].tmp = 50;
+		break;
+	case PT_IGNT:
+		parts[i].life = 3;
+		break;
+	case PT_FRZW:
+		parts[i].life = 100;
+		break;
+	case PT_PPIP:
+	case PT_PIPE:
+		parts[i].life = 60;
+		break;
+	case PT_BCOL:
+		parts[i].life = 110;
+		break;
+	case PT_FIRE:
+		parts[i].life = rand()%50+120;
+		break;
+	case PT_PLSM:
+		parts[i].life = rand()%150+50;
+		break;
+	case PT_CFLM:
+		parts[i].life = rand()%150+50;
+		break;
+	case PT_LAVA:
+		parts[i].life = rand()%120+240;
+		break;
+	case PT_NBLE:
+		parts[i].life = 0;
+		break;
+	case PT_ICEI:
+		parts[i].ctype = PT_WATR;
+		break;
+	case PT_MORT:
+		parts[i].vx = 2;
+		break;
+	case PT_EXOT:
+		parts[i].life = 1000;
+		parts[i].tmp = 244;
+		break;
+	case PT_EMBR:
+		parts[i].life = 50;
+		break;
+	case PT_TESC:
+		parts[i].tmp = v;
+		if (parts[i].tmp > 300)
+			parts[i].tmp=300;
+		break;
+	case PT_BIZR: case PT_BIZRG: case PT_BIZRS:
+		parts[i].ctype = 0x47FFFF;
+		break;
+	case PT_DTEC:
+	case PT_TSNS:
+	case PT_LSNS:
+		parts[i].tmp2 = 2;
+		break;
+	case PT_VINE:
+		parts[i].tmp = 1;
+		break;
+	case PT_VIRS:
+	case PT_VRSS:
+	case PT_VRSG:
+		parts[i].pavg[1] = 250;
+		break;
+	case PT_CRMC:
+		parts[i].tmp2 = (rand() % 5);
+		break;
+	case PT_ETRD:
+		etrd_life0_count++;
+		break;
+	case PT_STKM:
+	{
+		if (player.spwn == 0)
+		{
+			parts[i].life = 100;
+			Element_STKM::STKM_init_legs(this, &player, i);
+			player.spwn = 1;
+			player.rocketBoots = false;
+		}
+		else
+		{
+			parts[i].type = 0;
+			return -1;
+		}
+		int spawnID = create_part(-3, x, y, PT_SPAWN);
+		if (spawnID >= 0)
+			player.spawnID = spawnID;
+		break;
+	}
+	case PT_STKM2:
+	{
+		if (player2.spwn == 0)
+		{
+			parts[i].life = 100;
+			Element_STKM::STKM_init_legs(this, &player2, i);
+			player2.spwn = 1;
+			player2.rocketBoots = false;
+		}
+		else
+		{
+			parts[i].type = 0;
+			return -1;
+		}
+		int spawnID = create_part(-3, x, y, PT_SPAWN2);
+		if (spawnID >= 0)
+			player2.spawnID = spawnID;
+		break;
+	}
+	case PT_FIGH:
+	{
+		unsigned char fcount = 0;
+		while (fcount < MAX_FIGHTERS && fcount < (fighcount+1) && fighters[fcount].spwn==1) fcount++;
+		if (fcount < MAX_FIGHTERS && fighters[fcount].spwn == 0)
+		{
+			parts[i].life = 100;
+			parts[i].tmp = fcount;
+			Element_STKM::STKM_init_legs(this, &fighters[fcount], i);
+			fighters[fcount].spwn = 1;
+			fighters[fcount].elem = PT_DUST;
+			fighters[fcount].rocketBoots = false;
+			fighcount++;
+			return i;
+		}
+		parts[i].type=0;
+		return -1;
+	}
+	case PT_PHOT:
+	{
+		float a = (rand()%8) * 0.78540f;
+		parts[i].life = 680;
+		parts[i].ctype = 0x3FFFFFFF;
+		parts[i].vx = 3.0f*cosf(a);
+		parts[i].vy = 3.0f*sinf(a);
+		if ((pmap[y][x]&0xFF) == PT_FILT)
+			parts[i].ctype = Element_FILT::interactWavelengths(&parts[pmap[y][x]>>8], parts[i].ctype);
+		break;
+	}
+	case PT_ELEC:
+	case PT_E186:
+	{
+		float a = (rand()%360)*3.14159f/180.0f;
+		parts[i].life = 680;
+		parts[i].vx = 2.0f*cosf(a);
+		parts[i].vy = 2.0f*sinf(a);
+		break;
+	}
+	case PT_NEUT:
+	{
+		float r = (rand()%128+128)/127.0f;
+		float a = (rand()%360)*3.14159f/180.0f;
+		parts[i].life = rand()%480+480;
+		parts[i].vx = r*cosf(a);
+		parts[i].vy = r*sinf(a);
+		break;
+	}
+	case PT_PROT:
+	{
+		float a = (rand()%36)* 0.17453f;
+		parts[i].life = 680;
+		parts[i].vx = 2.0f*cosf(a);
+		parts[i].vy = 2.0f*sinf(a);
+		break;
+	}
+	case PT_GRVT:
+	{
+		float a = (rand()%360)*3.14159f/180.0f;
+		parts[i].life = 250 + rand()%200;
+		parts[i].vx = 2.0f*cosf(a);
+		parts[i].vy = 2.0f*sinf(a);
+		parts[i].tmp = 7;
+		break;
+	}
+	case PT_TRON:
+	{
+		int randhue = rand()%360;
+		int randomdir = rand()%4;
+		parts[i].tmp = 1|(randomdir<<5)|(randhue<<7);//set as a head and a direction
+		parts[i].tmp2 = 4;//tail
+		parts[i].life = 5;
+		break;
+	}
+	case PT_LIGH:
+	{
+		float gx, gy, gsize;
+		
+		if (v >= 0)
+		{
+			if (v > 55)
+				v = 55;
+			parts[i].life = v;
+		}
+		else
+			parts[i].life = 30;
+		parts[i].temp = parts[i].life*150.0f; // temperature of the lightning shows the power of the lightning
+		GetGravityField(x, y, 1.0f, 1.0f, gx, gy);
+		gsize = gx*gx+gy*gy;
+		if (gsize<0.0016f)
+		{
+			float angle = (rand()%6284)*0.001f;//(in radians, between 0 and 2*pi)
+			gsize = sqrtf(gsize);
+			// randomness in weak gravity fields (more randomness with weaker fields)
+			gx += cosf(angle)*(0.04f-gsize);
+			gy += sinf(angle)*(0.04f-gsize);
+		}
+		parts[i].tmp = (((int)(atan2f(-gy, gx)*(180.0f/M_PI)))+rand()%40-20+360)%360;
+		parts[i].tmp2 = 4;
+		break;
+	}
+	case PT_E189:
+	{
+		parts[i].life = v;
+		break;
+	}
+	default:
+		break;
+	}
 	//and finally set the pmap/photon maps to the newly created particle
 	if (elements[t].Properties & TYPE_ENERGY)
 		photons[y][x] = t|(i<<8);
@@ -4183,7 +4209,7 @@ void Simulation::UpdateParticles(int start, int end)
 									if (ctemph >= pres+elements[PT_CRMC].HighTemperature)
 										s = 0;
 								}
-								else if (elements[parts[i].ctype].HighTemperatureTransition == PT_LAVA)
+								else if (elements[parts[i].ctype].HighTemperatureTransition == PT_LAVA || parts[i].ctype == PT_HEAC)
 								{
 									if (pt >= elements[parts[i].ctype].HighTemperature)
 										s = 0;
@@ -6080,8 +6106,12 @@ Simulation::Simulation():
 	player2.comm = 0;
 	
 	sim_max_pressure = 4.0f; // on breakable wall
+	isPrevFromMyMod = false;
 	isFromMyMod = true;
 
+	temporary_sim_variable[0] = NT; // on PIPE
+	temporary_sim_variable[1] = NT; // on WIFI
+	
 	init_can_move();
 	clear_sim();
 

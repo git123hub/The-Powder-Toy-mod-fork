@@ -301,12 +301,12 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 			parts[i].tmp = 0; // only preventing because negative tmp doesn't save
 		break;
 	case 9: // VIBR-like explosion
-		if (parts[i].temp >= 9600)
+		if (parts[i].temp > (MAX_TEMP - 12))
 		{
 			sim->part_change_type(i, x, y, PT_VIBR);
 			parts[i].temp = MAX_TEMP;
-			parts[i].life = 750;
-			parts[i].tmp2 = 0;
+			parts[i].life = 1000;
+			// parts[i].tmp2 = 0;
 			sim->emp2_trigger_count ++;
 		}
 		parts[i].temp += 12;
@@ -683,15 +683,17 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					}
 			break;
 		break2a:
-			for (rtmp = 0; rtmp < 4; rtmp++)
+			for (rii = 0; rii < 4; rii++)
 			{
 				if (BOUNDS_CHECK)
 				{
-					rx = tron_rx[rtmp];
-					ry = tron_ry[rtmp];
-					r = pmap[y+ry][x+rx];
-					if ((r&0xFF) == PT_VIRS || (r&0xFF) == PT_VRSS || (r&0xFF) == PT_VRSG) // if is virus
-						parts[r>>8].pavg[0] = 10;
+					rx = tron_rx[rii];
+					ry = tron_ry[rii];
+					rr = pmap[y+ry][x+rx];
+					if ((rr&0xFF) == PT_VIRS || (rr&0xFF) == PT_VRSS || (rr&0xFF) == PT_VRSG) // if is virus
+					{
+						parts[r>>8].pavg[0] += 10;
+					}
 				}
 			}
 			break;
@@ -1590,21 +1592,14 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					r >>= 8;
 					if (rt == PT_SPRK)
 					{
-						// 由于 "&" 和 "==" 的优先级高于 "&&".
-						// 并且 "&", "&&" 和 "!=" 的优先级高于 "||".
 						rctype = parts[r].ctype;
-						if (rctype == PT_SWCH)
+						if (rtmp & 0x100 && rctype == PT_SWCH) // 由于 "&" 和 "==" 的优先级高于 "&&".
 						{
-							if (rtmp & 0x100)
-							{
-								sim->part_change_type(r, x+rx, y+ry, PT_SWCH);
-								parts[r].life = 9;
-								parts[r].ctype = 0; // clear .ctype value
-							}
-							else if (rtmp & 1)
-								parts[i].tmp |= 0x100;
+							sim->part_change_type(r, x+rx, y+ry, PT_SWCH);
+							parts[r].life = 9;
+							parts[r].ctype = 0; // clear .ctype value
 						}
-						else if (parts[r].life == 3) 
+						else if (parts[r].life == 3 && (rtmp & 1 || rctype != PT_SWCH)) // 由于 "&", "&&" 和 "!=" 的优先级高于 "||".
 							parts[i].tmp |= 0x100;
 					}
 					else if (rt == PT_SWCH && rtmp & 0x100)
@@ -1640,7 +1635,7 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 		{
 		rctype = parts[i].ctype;
 		int rctypeExtra = rctype >> 8;
-		int EMBR_modifier;
+		// int EMBR_modifier;
 		rctype &= 0xFF;
 		if (!rctype)
 			return return_value;
@@ -1655,32 +1650,34 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 					{
 						// if (sim->elements[parts[r>>8].ctype].Properties & PROP_INSULATED && rx && ry) // INWR, PTCT, NTCT, etc.
 						//	continue;
-						EMBR_modifier = 0;
-						if (rctype != PT_LIGH || !(rand() & 15))
+						// EMBR_modifier = 0;
+						if (rctype != PT_LIGH || parts[r>>8].ctype == PT_TESC || !(rand() & 15))
 						{
 							nx = x+rx; ny = y+ry;
 							if (rctype == PT_EMBR) // use by EMBR (explosion spark) emitter
 							{
 								rr = pmap[ny][nx];
-								if ((rr & 0xFF) == PT_GLAS)
-								{
-									ny += ry; nx += rx;
-									EMBR_modifier |= 1;
-								}
+								if ((rr & 0xFF) != PT_GLAS)
+									continue;
+								ny += ry; nx += rx;
 							}
 							int np = sim->create_part(-1, nx, ny, rctype, rctypeExtra);
 							if (np >= 0) {
 								parts[np].vx = rtmp*rx; parts[np].vy = rtmp*ry;
 								parts[np].dcolour = parts[i].dcolour;
-								if ((rctype & 0xFF) == PT_PHOT && (np > i)) // like E189 (life = 11)
+								switch (rctype)
 								{
-									parts[np].flags |= FLAG_SKIPMOVE;
-								}
-								else if (EMBR_modifier & 1)
-								{
+								case PT_PHOT:
+									if (np > i) parts[np].flags |= FLAG_SKIPMOVE; // like E189 (life = 11)
+									break;
+								case PT_LIGH:
+									parts[np].tmp = atan2(-ry, (float)rx)/M_PI*360;
+									break;
+								case PT_EMBR:
 									parts[np].temp = parts[rr>>8].temp; // set temperature to EMBR
 									if (parts[rr>>8].life > 0)
 										parts[np].life = parts[rr>>8].life;
+									break;
 								}
 							}
 						}

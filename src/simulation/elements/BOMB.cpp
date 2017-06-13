@@ -30,7 +30,7 @@ Element_BOMB::Element_BOMB()
 	HeatConduct = 29;
 	Description = "Bomb. Explodes and destroys all surrounding particles when it touches something.";
 
-	Properties = TYPE_PART|PROP_LIFE_DEC|PROP_LIFE_KILL_DEC|PROP_SPARKSETTLE;
+	Properties = TYPE_PART|PROP_SPARKSETTLE;
 
 	LowPressure = IPL;
 	LowPressureTransition = NT;
@@ -48,7 +48,7 @@ Element_BOMB::Element_BOMB()
 //#TPT-Directive ElementHeader Element_BOMB static int update(UPDATE_FUNC_ARGS)
 int Element_BOMB::update(UPDATE_FUNC_ARGS)
 {
-	int r, rx, ry, nb;
+	int r, rx, ry, rt, nb;
 
 	for (rx=-1; rx<2; rx++)
 		for (ry=-1; ry<2; ry++)
@@ -57,27 +57,25 @@ int Element_BOMB::update(UPDATE_FUNC_ARGS)
 				r = pmap[y+ry][x+rx];
 				if (!r)
 					continue;
-				if ((r&0xFF)!=PT_BOMB && (r&0xFF)!=PT_EMBR && !(sim->elements[r&0xFF].Properties2 & (PROP_NODESTRUCT|PROP_CLONE)) && (r&0xFF)!=PT_VIBR
-					&& ((r&0xFF)!=PT_SPRK || !(sim->elements[parts[r>>8].ctype].Properties2 & PROP_NODESTRUCT)))
+				rt = r&0xFF;
+				if (rt!=PT_BOMB && rt!=PT_EMBR && !(sim->elements[rt].Properties2 & (PROP_NODESTRUCT|PROP_CLONE)) && rt!=PT_VIBR
+					&& (rt!=PT_SPRK || !(sim->elements[parts[r>>8].ctype].Properties2 & PROP_NODESTRUCT)))
 				{
-					int rad = 8;
-					int nxi;
-					int nxj;
+					int rad = 8, nt;
+					int nxi, nxj;
 					pmap[y][x] = 0;
 					for (nxj=-rad; nxj<=rad; nxj++)
 						for (nxi=-rad; nxi<=rad; nxi++)
 							if ((pow((float)nxi,2))/(pow((float)rad,2))+(pow((float)nxj,2))/(pow((float)rad,2))<=1)
 							{
 								int rr = pmap[y+nxj][x+nxi];
-								if (!(sim->elements[ rr&0xFF ].Properties2 & (PROP_NODESTRUCT|PROP_CLONE)) && (rr&0xFF)!=PT_VIBR && ((rr&0xFF)!=PT_E189 || (parts[rr >> 8].life&~0x1)!=8)
-									&& ((rr&0xFF)!=PT_SPRK || !(sim->elements[parts[rr>>8].ctype].Properties2 & PROP_NODESTRUCT)))
+								if (!rr)
+									continue;
+								nt = rr & 0xFF;
+								if (!(sim->elements[ nt ].Properties2 & (PROP_NODESTRUCT|PROP_CLONE)) && nt!=PT_VIBR && (nt!=PT_E189 || (parts[rr >> 8].life&~0x1)!=8)
+									&& (nt!=PT_SPRK || !(sim->elements[parts[rr>>8].ctype].Properties2 & PROP_NODESTRUCT)))
 								{
-									// add PBCN in immune elements list.
-									// "BOMB can killing GRVT": bug or feature?
-
-									// sim->delete_part(x+nxi, y+nxj); 
-									// or:
-									if (rr) sim->kill_part(rr >> 8);
+									sim->kill_part(rr >> 8);
 
 									sim->pv[(y+nxj)/CELL][(x+nxi)/CELL] += 0.1f;
 									nb = sim->create_part(-3, x+nxi, y+nxj, PT_EMBR);

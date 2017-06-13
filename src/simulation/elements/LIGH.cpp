@@ -102,12 +102,21 @@ int Element_LIGH::update(UPDATE_FUNC_ARGS)
 				{
 				case PT_LIGH:
 				case PT_TESC:
+				case PT_INDI:
 					continue;
 				case PT_CLNE:
 				case PT_THDR:
 				case PT_DMND:
 				case PT_FIRE:
 					parts[r>>8].temp = restrict_flt(parts[r>>8].temp+powderful/10, MIN_TEMP, MAX_TEMP);
+					continue;
+				case PT_INDC:
+					if (!parts[r>>8].life)
+					{
+						parts[r>>8].life  = 4;
+						parts[r>>8].ctype = rt;
+						sim->part_change_type(r>>8,x+rx,y+ry,PT_SPRK);
+					}
 					continue;
 				case PT_DEUT:
 				case PT_PLUT:
@@ -134,9 +143,13 @@ int Element_LIGH::update(UPDATE_FUNC_ARGS)
 					if (sim->player2.elem!=PT_LIGH && !(sim->E189_FIGH_pause & 16))
 						parts[r>>8].life -= powderful/100;
 					break;
-				default:
-					if (sim->elements[rt].Properties2 & PROP_NODESTRUCT)
-						continue;
+				case PT_HEAC:
+					parts[r>>8].temp = restrict_flt(parts[r>>8].temp+powderful/10, MIN_TEMP, MAX_TEMP);
+					if (parts[r>>8].temp > sim->elements[PT_HEAC].HighTemperature)
+					{
+						sim->part_change_type(r>>8, x+rx, y+ry, PT_LAVA);
+						parts[r>>8].ctype = PT_HEAC;
+					}
 					break;
 				}
 				if ((sim->elements[r&0xFF].Properties&PROP_CONDUCTS) && parts[r>>8].life==0)
@@ -282,8 +295,8 @@ bool Element_LIGH::create_LIGH(Simulation * sim, int x, int y, int c, int temp, 
 	else if (x >= 0 && x < XRES && y >= 0 && y < YRES)
 	{
 		int r = sim->pmap[y][x];
-		if ((((r&0xFF)==PT_VOID || ((r&0xFF)==PT_PVOD && sim->parts[r>>8].life >= 10)) && (!sim->parts[r>>8].ctype || (sim->parts[r>>8].ctype==c)!=(sim->parts[r>>8].tmp&1))) || (r&0xFF)==PT_BHOL || (r&0xFF)==PT_NBHL) // VOID, PVOD, VACU, and BHOL eat LIGH here
-			return true;
+		if ((((r&0xFF)==PT_VOID || ((r&0xFF)==PT_PVOD && sim->parts[r>>8].life >= 10)) && (!sim->parts[r>>8].ctype || (sim->parts[r>>8].ctype==c)!=(sim->parts[r>>8].tmp&1))) || (r&0xFF)==PT_BHOL || (r&0xFF)==PT_NBHL || (r&0xFF)==PT_INDI) // VOID, PVOD, VACU, and BHOL eat LIGH here
+			return true; // INDI insulating LIGH here.
 	}
 	else return true;
 	return false;

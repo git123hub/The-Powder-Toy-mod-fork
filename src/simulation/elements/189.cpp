@@ -393,6 +393,7 @@ int Element_E189::EMPTrigger(Simulation *sim, int triggerCount)
 		{
 		case PT_DMND:
 		case PT_INDI:
+		case PT_INDC:
 			break;
 		case PT_METL:
 			if (Probability::randFloat() < prob_breakElectronics)
@@ -456,6 +457,14 @@ int Element_E189::EMPTrigger(Simulation *sim, int triggerCount)
 			if (triggerCount > rand() % 1000)
 				sim->part_change_type(r, rx, ry, PT_BREC);
 			break;
+		case PT_HEAC:
+			if (triggerCount > rand() % 200)
+			{
+				parts[r].temp = MAX_TEMP;
+				parts[r].ctype = PT_HEAC;
+				sim->part_change_type(r, rx, ry, PT_LAVA);
+			}
+			break;
 		case PT_PSCN: case PT_NSCN:
 		case PT_PTCT: case PT_NTCT:
 		case PT_SWCH: case PT_DTEC:
@@ -502,16 +511,13 @@ int Element_E189::EMPTrigger(Simulation *sim, int triggerCount)
 			if (Probability::randFloat() < prob_breakElectronics)
 				sim->create_part(r, rx, ry, PT_PLSM);
 			break;
-		case PT_VIBR:
-			if (Probability::randFloat() < prob_breakElectronics * 0.2)
-				sim->part_change_type(r, rx, ry, PT_BVBR);
-			break;
 		case PT_BVBR:
 			if (Probability::randFloat() < prob_breakElectronics * 0.1)
-			{
 				sim->part_change_type(r, rx, ry, PT_VIBR);
-				parts[r].life = 1000;
-			}
+		case PT_VIBR:
+			parts[r].life = 1000;
+			parts[r].tmp += triggerCount << 9;
+			parts[r].tmp2 = 0;
 			break;
 		case PT_URAN:
 			if (Probability::randFloat() < prob_breakElectronics)
