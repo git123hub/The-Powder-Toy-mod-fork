@@ -334,6 +334,7 @@ void Simulation::SaveSimOptions(GameSave * gameSave)
 	gameSave->aheatEnable = aheat_enable;
 	gameSave->sextraLoopsCA = extraLoopsCA;
 	gameSave->sim_max_pressure = sim_max_pressure;
+	gameSave->isFromMyMod = isFromMyMod = true;
 	// gameSave->PINV_wireless = wireless2;
 }
 
@@ -2172,7 +2173,7 @@ void Simulation::init_can_move()
 	{
 		if (destinationType == PT_PHOT || elements[destinationType].Properties&PROP_TRANSPARENT)
 			can_move[PT_PHOT][destinationType] = 2;
-		if (destinationType != PT_DMND && destinationType != PT_INSL && destinationType != PT_INDI && destinationType != PT_VOID && destinationType != PT_PVOD && destinationType != PT_VIBR && destinationType != PT_BVBR && destinationType != PT_PRTI && destinationType != PT_PRTO && destinationType != PT_E187 && destinationType != PT_E188)
+		if (destinationType != PT_DMND && destinationType != PT_INSL && destinationType != PT_INDI && destinationType != PT_VOID && destinationType != PT_PVOD && destinationType != PT_VIBR && destinationType != PT_BVBR && destinationType != PT_PRTI && destinationType != PT_PRTO && destinationType != PT_E187)
 		{
 			can_move[PT_PROT][destinationType] = 2;
 			can_move[PT_GRVT][destinationType] = 2;
@@ -2770,7 +2771,7 @@ int Simulation::do_move(int i, int x, int y, float nxf, float nyf)
 		parts[i].y = nyf;
 		if (ny!=y || nx!=x)
 		{
-			pmap_remove (i, x, y, PT_PINVIS);
+			pmap_remove (i, x, y);
 			if (nx<CELL || nx>=XRES-CELL || ny<CELL || ny>=YRES-CELL)//kill_part if particle is out of bounds
 			{
 				kill_part(i);
@@ -2981,12 +2982,18 @@ void Simulation::restrict_can_move()
 	{
 		int t;
 
-		t = elements[PT_PIPE].HighPressureTransition;
-		elements[PT_PIPE].HighPressureTransition = temporary_sim_variable[0];
-		temporary_sim_variable[0] = t;
-		t = elements[PT_WIFI].HighPressureTransition;
-		elements[PT_WIFI].HighPressureTransition = temporary_sim_variable[1];
-		temporary_sim_variable[1] = t;
+		int * iswappage[3] = {
+			&(elements[PT_PIPE].HighPressureTransition),
+			&(elements[PT_WIFI].HighPressureTransition),
+			&(elements[PT_STOR].Hardness)
+		};
+		
+		for (int i = 0; i < 3; i++)
+		{
+			t = *(iswappage[i]);
+			*(iswappage[i]) = temporary_sim_variable[i];
+			temporary_sim_variable[i] = t;
+		}
 
 		isPrevFromMyMod = isFromMyMod;
 	}
@@ -2997,7 +3004,7 @@ void Simulation::kill_part(int i)//kills particle number i
 	int x = (int)(parts[i].x+0.5f);
 	int y = (int)(parts[i].y+0.5f);
 	if (x>=0 && y>=0 && x<XRES && y<YRES) {
-		pmap_remove ((unsigned int)i, x, y, PT_PINVIS);
+		pmap_remove ((unsigned int)i, x, y);
 	}
 
 	if (parts[i].type == PT_NONE)
@@ -3117,7 +3124,7 @@ void Simulation::part_change_type(int i, int x, int y, int t)//changes the type 
 		etrd_life0_count++;
 
 	parts[i].type = t;
-	pmap_remove(i, x, y, PT_PINVIS);
+	pmap_remove(i, x, y);
 	pmap_add(i, x, y, t);
 }
 
@@ -3307,7 +3314,7 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 	{
 		int oldX = (int)(parts[p].x+0.5f);
 		int oldY = (int)(parts[p].y+0.5f);
-		pmap_remove(p, oldX, oldY, PT_PINVIS);
+		pmap_remove(p, oldX, oldY);
 		
 		if (parts[p].type == PT_STKM)
 		{
@@ -4631,7 +4638,7 @@ killed:
 						else
 							stickman->underp = part1;
 					}	
-					pmap_remove (i, x, y, PT_PINVIS);
+					pmap_remove (i, x, y);
 					if (nx<CELL || nx>=XRES-CELL || ny<CELL || ny>=YRES-CELL)
 					{
 						kill_part(i);
@@ -4714,7 +4721,7 @@ killed:
 					parts[i].flags |= FLAG_STAGNANT;
 					if (t==PT_NEUT && 100>(rand()%1000))
 					{
-						kill_part(i);
+						kill_part(i); // only NEUT???
 						continue;
 					}
 					r = pmap[fin_y][fin_x];
@@ -4786,8 +4793,8 @@ killed:
 					}
 					else
 					{
-						if (t!=PT_NEUT)
-							kill_part(i);
+						if (t!=PT_NEUT /* && t!=PT_E186 */)
+							kill_part(i); // only NEUT???
 						continue;
 					}
 					if (!(parts[i].ctype&0x3FFFFFFF) && t == PT_PHOT)
@@ -6111,6 +6118,7 @@ Simulation::Simulation():
 
 	temporary_sim_variable[0] = NT; // on PIPE
 	temporary_sim_variable[1] = NT; // on WIFI
+	temporary_sim_variable[2] = 0;  // STOR's Hardness
 	
 	init_can_move();
 	clear_sim();

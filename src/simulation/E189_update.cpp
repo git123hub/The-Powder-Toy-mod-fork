@@ -1783,6 +1783,35 @@ int E189_Update::update(UPDATE_FUNC_ARGS)
 										sim->part_change_type(r>>8, x+rx, y+ry, PT_ACID);
 										parts[r>>8].life += 10;
 									}
+									break;
+								case PT_E189:
+									if (parts[r>>8].life == 15) // ACID/CAUS + GAS --> 3 RFRG
+									{
+										rr = pmap[y-ry][x-rx];
+										if ((rr&0xFF) == PT_CAUS || (rr&0xFF) == PT_ACID)
+										{
+											parts[r>>8].tmp2 ++;
+											sim->kill_part(rr>>8);
+										}
+
+										rr = pmap[y+2*ry][x+2*rx];
+										if (!rr && parts[r>>8].tmp > 0)
+										{
+											rii = sim->create_part(-1, x+2*rx, y+2*ry, PT_RFRG);
+											if (rii >= 0) parts[r>>8].tmp --;
+										}
+										else if ((rr&0xFF) == PT_RFRG || (rr&0xFF) == PT_RFGL)
+										{
+											parts[r>>8].tmp ++;
+											sim->kill_part(rr>>8);
+										}
+										else if ((rr&0xFF) == PT_GAS && parts[r>>8].tmp2 > 0)
+										{
+											parts[r>>8].tmp2 --;
+											parts[r>>8].tmp += 3;
+											sim->kill_part(rr>>8);
+										}
+									}
 								}
 							}
 							if (!--trade)

@@ -60,12 +60,6 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 			slife = parts[i].life;
 			switch (sctype - 0x100)
 			{
-			/*
-			case 0:
-				sim->part_change_type(i, x, y, PT_PHOT);
-				parts[i].ctype = parts[i].tmp2; // restore wavelength
-				break;
-			*/
 			case 1:
 				switch (rand() & 3)
 				{
@@ -85,32 +79,6 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						break;
 				}
 				break;
-/*
-			case 44: // (300 - 0x100)
-				if (sim->elements[r&0xFF].Properties & PROP_CONDUCTS)
-				{
-					parts[r>>8].ctype = parts[r>>8].type;
-					parts[r>>8].life = 40 + parts[r>>8].life;
-					sim->part_change_type(r>>8, x, y, PT_SPRK);
-				}
-				break;
-*/
-			/*
-			case 2:
-				sim->part_change_type(i, x, y, PT_NEUT);
-				break;
-			case 3:
-				sim->part_change_type(i, x, y, PT_ELEC);
-				break;
-			case 4:
-				sim->part_change_type(i, x, y, PT_PROT);
-				parts[i].tmp2 = 0;
-				break;
-			case 5:
-				sim->part_change_type(i, x, y, PT_GRVT);
-				parts[i].tmp = 0;
-				break;
-			*/
 			}
 		}
 		return 0;
@@ -166,9 +134,15 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						parts[s].life = 0;
 				}
 				break;
+			/*
 			case PT_CAUS:
-				sim->create_part(r>>8, x, y, PT_RFRG); // probably inverse for NEUT???
+				{
+					sim->part_change_type(r>>8, x, y, PT_SPRK); // probably inverse for NEUT???
+					parts[r>>8].life = 128 + rand()%128;
+					parts[r>>8].ctype = PT_RFRG;
+				}
 				break;
+			*/
 			case PT_FILT:
 				sim->part_change_type(i, x, y, PT_PHOT);
 				parts[i].ctype = 0x3FFFFFFF;
@@ -217,6 +191,7 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					}
 				}
 				break;
+/*
 			case PT_TUNG:
 			case PT_BRMT:
 				if (((r & 0xFF) == PT_TUNG || parts[r >> 8].ctype == PT_TUNG) && !(rand()%50))
@@ -224,8 +199,10 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					sim->create_part(r>>8, x, y, PT_E187);
 				}
 				break;
+*/
 			case PT_INVIS:
 				parts[i].ctype = PT_NEUT;
+			/*
 			case PT_PLUT:
 				if (parts[r>>8].tmp2 > 0)
 				{
@@ -233,6 +210,7 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					sim->part_change_type(r>>8, x, y, PT_POLO);
 				}
 				break;
+			*/
 			case PT_SPNG:
 				sim->part_change_type(r>>8, x, y, PT_GEL);
 				parts[r>>8].tmp = parts[r>>8].life;

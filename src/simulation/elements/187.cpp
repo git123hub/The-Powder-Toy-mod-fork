@@ -41,8 +41,8 @@ Element_E187::Element_E187()
 	LowPressureTransition = NT;
 	HighPressure = IPH;
 	HighPressureTransition = NT;
-	LowTemperature = 160.0f;
-	LowTemperatureTransition = PT_E188;
+	LowTemperature = ITL;
+	LowTemperatureTransition = NT;
 	HighTemperature = ITH;
 	HighTemperatureTransition = NT;
 
@@ -52,42 +52,35 @@ Element_E187::Element_E187()
 
 //#TPT-Directive ElementHeader Element_E187 static int update(UPDATE_FUNC_ARGS)
 int Element_E187::update(UPDATE_FUNC_ARGS)
-{ // for both ISZS and ISOZ
+{ // for both 'E187' and 'E188'
 	int r, rx, ry, stmp, stmp2, rt;
 	switch (parts[i].ctype) {
 	case 0:
-		if (!parts[i].life)
 		{
 			stmp = parts[i].tmp;
-			if (!(rand()%10000) && !(stmp & 1))
+			if (!parts[i].life)
 			{
-				Element_E187::createPhotons(sim, i, x, y, stmp, parts);
+				if (!(rand()%10000) && !(stmp & 1))
+				{
+					Element_E187::createPhotons(sim, i, x, y, stmp, parts);
+				}
+				r = sim->photons[y][x];
+				if ((r & 0xFF) == PT_PHOT && !(rand()%100))
+				{
+					Element_E187::createPhotons(sim, i, x, y, stmp, parts);
+				}
 			}
-			r = sim->photons[y][x];
-			if ((r & 0xFF) == PT_PHOT && !(rand()%100))
+			if (stmp & 4)
 			{
-				Element_E187::createPhotons(sim, i, x, y, stmp, parts);
+				parts[i].vx = 0; parts[i].vy = 0;
+				if (parts[i].temp >= 300.0f)
+					parts[i].tmp &= ~0x4;
 			}
-			if (parts[i].temp > 9300 && sim->pv[y/CELL][x/CELL] >= 100)
-				for (rx=-1; rx<2; rx++)
-					for (ry=-1; ry<2; ry++)
-						if (BOUNDS_CHECK)
-						{
-							r = pmap[y+ry][x+rx];
-							if (!r)
-								continue;
-							rt = r >> 8;
-							if (parts[rt].type == PT_LAVA && parts[rt].ctype == PT_TUNG && !(rand() & 15))
-							{
-								sim->create_part(rt, x, y, PT_E187);
-								parts[rt].temp = MAX_TEMP;
-								parts[i].temp = parts[rt].temp;
-								parts[rt].tmp = parts[i].tmp & 0xFFFFFFFE;
-								sim->pv[y/CELL][x/CELL] += 20.0f;
-							}
-							else if (parts[rt].type == PT_NBHL)
-								sim->kill_part(rt);
-						}
+			else
+			{
+				if (parts[i].temp < 160.0f)
+					parts[i].tmp |= 0x4;
+			}
 		}
 		break;
 	case 1:
