@@ -2011,8 +2011,8 @@ void Simulation::clear_sim(void)
 	emp_decor = 0;
 	emp_trigger_count = 0;
 	emp2_trigger_count = 0;
-	E189_pause = 0;
-	E189_FIGH_pause = 0;
+	SimExtraFunc = 0;
+	Extra_FIGH_pause = 0;
 	breakable_wall_count = 0;
 	signs.clear();
 	memset(bmap, 0, sizeof(bmap));
@@ -2164,7 +2164,7 @@ void Simulation::init_can_move()
 		}
 
 		//SAWD cannot be displaced by other powders
-		if (elements[movingType].Properties & TYPE_PART)
+		if (elements[movingType].Properties & TYPE_PART && (movingType != PT_POLO && movingType != PT_POLC))
 			can_move[movingType][PT_SAWD] = 0;
 	}
 	//a list of lots of things PHOT can move through
@@ -2235,15 +2235,15 @@ void Simulation::init_can_move()
 
 	can_move[PT_E186][PT_BRMT] = 3;
 	
-	can_move[PT_PROT][PT_E189] = 3;
-	can_move[PT_GRVT][PT_E189] = 3;
-	can_move[PT_NEUT][PT_E189] = 3;
-	can_move[PT_ELEC][PT_E189] = 3;
-	can_move[PT_E186][PT_E189] = 3;
+	can_move[PT_PROT][ELEM_MULTIPP] = 3;
+	can_move[PT_GRVT][ELEM_MULTIPP] = 3;
+	can_move[PT_NEUT][ELEM_MULTIPP] = 3;
+	can_move[PT_ELEC][ELEM_MULTIPP] = 3;
+	can_move[PT_E186][ELEM_MULTIPP] = 3;
 
-	can_move[PT_STKM][PT_E189] = 3;
-	can_move[PT_STKM2][PT_E189] = 3;
-	can_move[PT_FIGH][PT_E189] = 3;
+	can_move[PT_STKM][ELEM_MULTIPP] = 3;
+	can_move[PT_STKM2][ELEM_MULTIPP] = 3;
+	can_move[PT_FIGH][ELEM_MULTIPP] = 3;
 	restrict_can_move();
 	
 	// can_move[PT_CNCT][PT_E191] = 0;
@@ -2333,7 +2333,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 					return 0;
 			}
 			break;
-		case PT_E189:
+		case ELEM_MULTIPP:
 			{
 				int rlife = parts[r>>8].life, tmp_flag = parts[r>>8].tmp;
 				switch (rlife)
@@ -2501,15 +2501,15 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			case PT_FILT:
 				parts[i].ctype = Element_FILT::interactWavelengths(&parts[r>>8], parts[i].ctype);
 				return 1;
-			case PT_E189:
+			case ELEM_MULTIPP:
 				switch (parts[r>>8].life)
 				{
 				case 5:
-					Element_E189::interactDir(this, i, x, y, &parts[i], &parts[r>>8]);
+					Element_MULTIPP::interactDir(this, i, x, y, &parts[i], &parts[r>>8]);
 					break;
 				case 7:
 					if (!(parts[i].flags & FLAG_SKIPMOVE))
-						Element_E189::duplicatePhotons(this, i, nx, ny, &parts[i], &parts[r>>8]);
+						Element_MULTIPP::duplicatePhotons(this, i, nx, ny, &parts[i], &parts[r>>8]);
 					break;
 				}
 				return 1;
@@ -2541,7 +2541,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				}
 				return 1;
 			case PT_INVIS:
-				if (E189_pause & 0x8)
+				if (SimExtraFunc & 0x8)
 					return 1;
 				{
 					float pressureResistance = 0.0f;
@@ -2557,13 +2557,13 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				}
 				break;
 			case PT_BIZR: case PT_BIZRG: case PT_BIZRS:
-				if (E189_pause & 0x8)
+				if (SimExtraFunc & 0x8)
 					return 1;
 				part_change_type(i, x, y, PT_ELEC);
 				parts[i].ctype = 0;
 				break;
 			case PT_H2:
-				if (!((parts[i].tmp & 0x1) || (E189_pause & 0x8)))
+				if (!((parts[i].tmp & 0x1) || (SimExtraFunc & 0x8)))
 				{
 					part_change_type(i, x, y, PT_PROT);
 					parts[i].ctype = 0;
@@ -2574,7 +2574,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				}
 				break;
 			case PT_GPMP:
-				if (parts[r>>8].life == 0 && !(E189_pause & 0x8))
+				if (parts[r>>8].life == 0 && !(SimExtraFunc & 0x8))
 				{
 					part_change_type(i, x, y, PT_GRVT);
 					parts[i].tmp = parts[r>>8].temp - 273.15f;
@@ -2605,7 +2605,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 				parts[i].ctype = Element_FILT::interactWavelengths(&parts[r>>8], parts[i].ctype);
 			break;
 		case PT_E186:
-			if (parts[i].ctype == 0x100 && (r&0xFF) != PT_E189) // exit from E189 area
+			if (parts[i].ctype == 0x100 && (r&0xFF) != ELEM_MULTIPP) // exit from E189 area
 			{
 				parts[i].ctype = parts[i].tmp2;
 				parts[i].tmp2 = 0;
@@ -2665,8 +2665,8 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			return 0;
 		}
 		break;
-	case PT_E189:
-		if (parts[i].type == PT_E186) // PT_E189 (life=17) eats PT_E186
+	case ELEM_MULTIPP:
+		if (parts[i].type == PT_E186) // ELEM_MULTIPP (life=17) eats PT_E186
 		{
 			kill_part(i);
 			return 0;
@@ -3167,16 +3167,16 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 			parts[index].ctype = PT_DUST;
 			return index;
 		}
-		if (p == -2 && type == PT_E189)
+		if (p == -2 && type == ELEM_MULTIPP)
 		{
 			if (parts[index].life == 10)
 			{
-				E189_pause &= ~2;
+				SimExtraFunc &= ~2;
 				return index;
 			}
 			else if (parts[index].life == 26 && !parts[index].tmp)
 			{
-				Element_E189::FloodButton(this, index, x, y);
+				Element_MULTIPP::FloodButton(this, index, x, y);
 				return index;
 			}
 			else if (parts[index].life == 35)
@@ -3237,12 +3237,12 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 		{
 			//If an element has the PROP_DRAWONCTYPE property, and the element being drawn to it does not have PROP_NOCTYPEDRAW (Also some special cases), set the element's ctype
 			/* int */ drawOn = pmap[y][x]&0xFF;
-			if (drawOn == PT_E189)
+			if (drawOn == ELEM_MULTIPP)
 			{
 				E189ID = pmap[y][x]>>8;
 				if (parts[E189ID].life == 26 && !parts[E189ID].tmp)
 				{
-					Element_E189::FloodButton(this, E189ID, x, y);
+					Element_MULTIPP::FloodButton(this, E189ID, x, y);
 					return -1;
 				}
 				else if (parts[E189ID].life == 35)
@@ -3250,7 +3250,7 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 					retcode = -1;
 				drawOnE189Ctype:
 					parts[E189ID].ctype = t;
-					if ((t == PT_LIFE && v >= 0 && v < NGOL) || t == PT_E189)
+					if ((t == PT_LIFE && v >= 0 && v < NGOL) || t == ELEM_MULTIPP)
 						parts[E189ID].ctype |= v << 8;
 					return retcode;
 				}
@@ -3631,7 +3631,7 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 		parts[i].tmp2 = 4;
 		break;
 	}
-	case PT_E189:
+	case ELEM_MULTIPP:
 	{
 		parts[i].life = v;
 		break;
@@ -4261,7 +4261,7 @@ void Simulation::UpdateParticles(int start, int end)
 						if (t==PT_ICEI || t==PT_LAVA || t==PT_SNOW)
 							parts[i].ctype = parts[i].type;
 						if (!(t==PT_ICEI && parts[i].ctype==PT_FRZW ||
-							(t==PT_VIRS || t==PT_VRSS || t==PT_VRSG) && parts[i].tmp4==PT_E189 // don't clear VIRS-infected E189's life
+							(t==PT_VIRS || t==PT_VRSS || t==PT_VRSG) && parts[i].tmp4==ELEM_MULTIPP // don't clear VIRS-infected E189's life
 						))
 							parts[i].life = 0;
 						if (t == PT_FIRE)
@@ -5542,7 +5542,7 @@ void Simulation::RecalcFreeParticles()
 			NUM_PARTS ++;
 
 			//decrease particle life
-			if (!sys_pause && !(E189_pause & 2) || framerender)
+			if (!sys_pause && !(SimExtraFunc & 2) || framerender)
 			{
 				if (t<0 || t>=PT_NUM || !elements[t].Enabled)
 				{
@@ -5599,7 +5599,7 @@ void Simulation::RecalcFreeParticles()
 			parts[lastPartUnused].life = parts_lastActiveIndex+1;
 	}
 	parts_lastActiveIndex = lastPartUsed;
-	if (elementRecount && (!sys_pause && !(E189_pause & 2) || framerender))
+	if (elementRecount && (!sys_pause && !(SimExtraFunc & 2) || framerender))
 		elementRecount = false;
 }
 
@@ -5670,7 +5670,7 @@ void Simulation::CheckStacking()
 //updates pmap, gol, and some other simulation stuff (but not particles)
 void Simulation::BeforeSim()
 {
-	if (!sys_pause && !(E189_pause & 2) || framerender)
+	if (!sys_pause && !(SimExtraFunc & 2) || framerender)
 	{
 		air->update_air();
 
@@ -5710,7 +5710,7 @@ void Simulation::BeforeSim()
 
 	RecalcFreeParticles();
 
-	if (!sys_pause && !(E189_pause & 2) || framerender)
+	if (!sys_pause && !(SimExtraFunc & 2) || framerender)
 	{
 		// decrease wall conduction, make walls block air and ambient heat
 		int x, y;
@@ -5855,11 +5855,11 @@ void Simulation::BeforeSim()
 		
 		// make E189 work
 #if 0
-		if(elementCount[PT_E189] > 0)
+		if(elementCount[ELEM_MULTIPP] > 0)
 		{
 			for (int i = 0; i <= parts_lastActiveIndex; i++)
 			{
-				if(parts[i].type == PT_E189)
+				if(parts[i].type == ELEM_MULTIPP)
 				{
 					switch (parts[i].life)
 					{
@@ -5958,18 +5958,18 @@ void Simulation::AfterSim()
 	}
 	if (emp2_trigger_count)
 	{
-		Element_E189::EMPTrigger(this, emp2_trigger_count);
+		Element_MULTIPP::EMPTrigger(this, emp2_trigger_count);
 		emp2_trigger_count = 0;
 	}
-	if (E189_pause)
+	if (SimExtraFunc)
 	{
-		if (E189_pause & 0x0001)
+		if (SimExtraFunc & 0x0001)
 			sys_pause = true; // set pause state
-		if (E189_pause & 0x0004)
+		if (SimExtraFunc & 0x0004)
 			no_generating_BHOL = !no_generating_BHOL; // toggle BHOL generation
-		if (E189_pause & 0x0010)
+		if (SimExtraFunc & 0x0010)
 			elements[PT_PHOT].Properties2 ^= PROP_NOSLOWDOWN; // toggle PHOT's slowed down flag
-		if (E189_pause & 0x0020)
+		if (SimExtraFunc & 0x0020)
 		{
 			elements[PT_INVIS].Properties2 ^= PROP_NODESTRUCT; // toggle INVS's indestructibility
 			// if (elements[PT_INVIS].Properties2 & PROP_NODESTRUCT)
@@ -5982,15 +5982,15 @@ void Simulation::AfterSim()
 			//	elements[PT_INVIS].Hardness = INVS_hardness_tmp;
 			// }
 		}
-		if (E189_pause & 0x0040)
+		if (SimExtraFunc & 0x0040)
 			Element_PHOT::ignite_flammable = !Element_PHOT::ignite_flammable;
-		E189_pause &= ~0x000000F5;
-		Element_E189::maxPrior = 0;
+		SimExtraFunc &= ~0x000000F5;
+		Element_MULTIPP::maxPrior = 0;
 	}
-	if (E189_FIGH_pause_check)
+	if (Extra_FIGH_pause_check)
 	{
-		E189_FIGH_pause ^= E189_FIGH_pause_check;
-		E189_FIGH_pause_check = 0;
+		Extra_FIGH_pause ^= Extra_FIGH_pause_check;
+		Extra_FIGH_pause_check = 0;
 	}
 }
 
@@ -6026,9 +6026,9 @@ Simulation::Simulation():
 	aheat_enable(0),
 	water_equal_test(0),
 	sys_pause(0),
-	E189_pause(0),
-	E189_FIGH_pause_check(0),
-	E189_FIGH_pause(0),
+	SimExtraFunc(0),
+	Extra_FIGH_pause_check(0),
+	Extra_FIGH_pause(0),
 	framerender(0),
 	pretty_powder(0),
 	sandcolour_frame(0)
