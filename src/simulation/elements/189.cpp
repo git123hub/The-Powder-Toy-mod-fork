@@ -154,10 +154,12 @@ VideoBuffer * Element_MULTIPP::iconGen(int toolID, int width, int height)
 //#TPT-Directive ElementHeader Element_MULTIPP static void interactDir(Simulation* sim, int i, int x, int y, Particle* part_phot, Particle* part_other)
 void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle* part_phot, Particle* part_other) // photons direction/type changer
 {
-	int rtmp = part_other->tmp, rtmp2 = part_other->tmp2, rct = part_other->ctype, mask = 0x3FFFFFFF;
+	int rtmp = part_other->tmp, rtmp2 = part_other->tmp2, rct = part_other->ctype;
 	int ctype, r1, r2, r3, temp;
 	float rvx, rvy, rvx2, rvy2, rdif, multipler = 1.0f;
 	long long int lsb;
+	signed char arr1[4] = {1,0,-1,0};
+	signed char arr2[4] = {0,1,0,-1};
 	if (rtmp)
 	{
 		rvx = (float)rtmp2 / 1000.0f;
@@ -189,13 +191,41 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 			part_phot->vx = rdif * cosf(rvx2);
 			part_phot->vy = rdif * sinf(rvx2);
 			break;
+		case 5: // FILT wavelength changer (check 8 directions)
+			x = (int)(part_other->x+0.5f);
+			y = (int)(part_other->y+0.5f);
+			if (rtmp2 <= 0)
+			{
+				rvx = part_phot->vx;
+				rvy = part_phot->vy;
+				sim->kill_part(i);
+				r1 = 1, r2 = 1;
+				(rvx < 0) && (rvx = -rvx, r1 = -r1, r2 = -r2);
+				(rvy < 0) && (rvy = -rvy, r1 = -r1);
+				r3 = (2 * rvy > rvx ? r1 * r2 : 0);
+				(2 * rvx > rvy) || (r2 = 0);
+			}
+			else
+			{
+				rtmp2 = (rtmp2-1) & 7;
+				r2 = sim->portal_rx[rtmp2];
+				r3 = sim->portal_ry[rtmp2];
+			}
+			while (x += r2, y += r3, sim->InBounds(x, y))
+			{
+				r1 = sim->pmap[y][x];
+				if ((r1&0xFF) != PT_FILT) break;
+				sim->parts[r1>>8].ctype = part_phot->ctype;
+			}
+			break;
 		}
 	}
 	else
 	{
+		int mask = 0x3FFFFFFF;
 		switch (rtmp2)
 		{
-			case 1: // 50% turn left
+			case 1: // beam splitter (50% turn left)
 				if (rand() & 1)
 				{
 					rdif = part_phot->vx;
@@ -203,7 +233,7 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 					part_phot->vy = -rdif;
 				}
 				break;
-			case 2: // 50% turn right
+			case 2: // beam splitter (50% turn right)
 				if (rand() & 1)
 				{
 					rdif = part_phot->vx;
@@ -211,11 +241,15 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 					part_phot->vy = rdif;
 				}
 				break;
-			case 3: // 50% turn left, 50% turn right
+			case 3:
+				// 50% turn left, 50% turn right
+				// or 50% go straight, 50% go backward
 				rvx = part_phot->vx;
-				rvy = (rand() & 1) ? 1.0 : -1.0;
-				part_phot->vx =  rvy * part_phot->vy;
-				part_phot->vy = -rvy * rdif;
+				rvy = part_phot->vy;
+				(rct & 1) || (rdif = rvx, rvx = rvy, rvy = -rdif);
+				rdif = (rand() & 1) ? 1.0 : -1.0;
+				part_phot->vx = rdif * rvx;
+				part_phot->vy = rdif * rvy;
 				break;
 			case 4: // turn left + go straight + turn right = 100%
 				r1 = rand() % 3;
@@ -224,7 +258,7 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 					rvx = part_phot->vx;
 					rvy = (r1 & 1) ? 1.0 : -1.0;
 					part_phot->vx =  rvy * part_phot->vy;
-					part_phot->vy = -rvy * rdif;
+					part_phot->vy = -rvy * rvx;
 				}
 				break;
 			case 5: // random "energy" particle
@@ -256,12 +290,12 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 				part_phot->tmp &= ~0x1;
 				break;
 			case 13: // set PHOT life
-				part_phot->life = part_other->ctype;
+				part_phot->life = rct;
 				break;
 			case 14: // PHOT life extender (positive)
 				if (part_phot->life > 0)
 				{
-					part_phot->life += part_other->ctype;
+					part_phot->life += rct;
 					if (part_phot->life < 0)
 						part_phot->life = 0;
 				}
@@ -269,7 +303,7 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 			case 15: // PHOT life extender (negative)
 				if (part_phot->life > 0)
 				{
-					part_phot->life -= part_other->ctype;
+					part_phot->life -= rct;
 					if (part_phot->life <= 0)
 						sim->kill_part(i);
 				}
@@ -327,7 +361,7 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 			case 17: // PHOT life multipler
 				if (part_phot->life > 0)
 				{
-					part_phot->life *= part_other->ctype;
+					part_phot->life *= rct;
 					if (part_phot->life < 0)
 						part_phot->life = 0;
 				}
@@ -336,6 +370,41 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 				part_phot->tmp2 = part_phot->ctype;
 				part_phot->ctype = 0x100;
 				sim->part_change_type(i, x, y, PT_E186);
+				break;
+			case 19: // beam splitter (switch)
+				r1 = rct >> 6;
+				part_phot->vx = r1 * sim->portal_rx[rct&7];
+				part_phot->vy = r1 * sim->portal_ry[rct&7];
+				part_other->ctype = r1<<6 | ((rct&7)<<3) | ((rct>>3)&7);
+				break;
+			case 20:
+				rvx = part_phot->vx;
+				rvy = part_phot->vy;
+				r1 = (rvx >= rvy) ? 0 : 1;
+				(rvx < -rvy) && (r1 ^= 3);
+				// (rvx <= rvy && rvx <= -rvy) && (r1 = 2);
+				switch ((rct>>2) & 0x3)
+				{
+				case 0:
+					if ((rct ^ r1) & 1) // if direction is perpendicular to "ELEM_MULTIPP"
+					{
+						part_other->ctype ^= 1;
+						r1 = (r1 + ((rct & 2) | 1)) & 0x3;
+					}
+					break;
+				case 1:
+					r2 = (rct << 1) | 1;
+					r1 = (rct & 0x2 ? r2 - r1 : r2 + r1) & 0x3;
+					part_other->ctype ^= 1;
+					break;
+				case 2:
+					part_other->ctype &= ~0x3;
+					part_other->ctype |= (r1^2);
+					r1 = rct & 0x3;
+					break;
+				}
+				part_phot->vx = (float)((rct >> 4) * arr1[r1]);
+				part_phot->vy = (float)((rct >> 4) * arr2[r1]);
 				break;
 		}
 	}
@@ -365,11 +434,17 @@ void Element_MULTIPP::duplicatePhotons(Simulation* sim, int i, int x, int y, Par
 		sim->parts[ri].ctype = part_other->ctype;
 	else
 		sim->parts[ri].ctype = part_phot->ctype;
+	if (rtmp & 0x10000)
+	{
+		sim->parts[ri].flags |= FLAG_PHOTDECO;
+		sim->parts[ri].dcolour = part_phot->dcolour;
+	}
 }
 
 //#TPT-Directive ElementHeader Element_MULTIPP static int EMPTrigger(Simulation *sim, int triggerCount)
 int Element_MULTIPP::EMPTrigger(Simulation *sim, int triggerCount)
 {
+#ifndef NO_SPC_ELEM_EXPLODE
 	int t, ct, rx, ry, r1;
 	Particle *parts = sim->parts;
 	
@@ -523,6 +598,15 @@ int Element_MULTIPP::EMPTrigger(Simulation *sim, int triggerCount)
 			if (Probability::randFloat() < prob_breakElectronics)
 				sim->part_change_type(r, rx, ry, PT_PLUT);
 			break;
+		case PT_C5:
+		case PT_ANAR:
+			if (!(rand()%200))
+			{
+				sim->part_change_type(r, rx, ry, PT_CFLM);
+				parts[r].life = rand()%150+100;
+				parts[r].temp = MAX_TEMP;
+			}
+			break;
 		case ELEM_MULTIPP:
 			switch (parts[r].life)
 			{
@@ -582,6 +666,7 @@ int Element_MULTIPP::EMPTrigger(Simulation *sim, int triggerCount)
 			break;
 		}
 	}
+#endif /* NO_SPC_ELEM_EXPLODE */
 }
 
 //#TPT-Directive ElementHeader Element_MULTIPP static void FloodButton(Simulation *sim, int i, int x, int y)
@@ -644,7 +729,7 @@ void Element_MULTIPP::FloodButton(Simulation *sim, int i, int x, int y)
 		
 		// add adjacent pixels to stack
 		if (y >= 1)
-			for (x=x1-1; x<=x2+1; x++)
+			for (x=x1; x<=x2; x++)
 			{
 				r = pmap[y-1][x];
 				if ((r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 26 && !parts[r>>8].tmp)
@@ -660,7 +745,7 @@ void Element_MULTIPP::FloodButton(Simulation *sim, int i, int x, int y)
 				}
 			}
 		if (y < YRES-1)
-			for (x=x1-1; x<=x2+1; x++)
+			for (x=x1; x<=x2; x++)
 			{
 				r = pmap[y+1][x];
 				if ((r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 26 && !parts[r>>8].tmp)

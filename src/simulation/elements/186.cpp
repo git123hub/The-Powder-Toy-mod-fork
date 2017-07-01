@@ -1,4 +1,7 @@
 #include "simulation/Elements.h"
+//Temp particle used for graphics
+Particle tpart_phot;
+
 //#TPT-Directive ElementClass Element_E186 PT_E186 186
 Element_E186::Element_E186()
 {
@@ -31,7 +34,7 @@ Element_E186::Element_E186()
 	Description = "Experimental element.";
 
 	Properties = TYPE_ENERGY|PROP_LIFE_DEC|PROP_RADIOACTIVE|PROP_LIFE_KILL_DEC;
-	Properties2 |= PROP_NOWAVELENGTHS;
+	Properties2 |= PROP_NOWAVELENGTHS | PROP_CTYPE_SPEC;
 
 	LowPressure = IPL;
 	LowPressureTransition = NT;
@@ -44,24 +47,37 @@ Element_E186::Element_E186()
 
 	Update = &Element_E186::update;
 	Graphics = &Element_E186::graphics;
+	
+	memset(&tpart_phot, 0, sizeof(Particle));
 }
 
 //#TPT-Directive ElementHeader Element_E186 static int update(UPDATE_FUNC_ARGS)
 int Element_E186::update(UPDATE_FUNC_ARGS)
 {
-	int r, s, slife, sctype;
+	int r, s, sctype;
 	float r2, r3;
 	sctype = parts[i].ctype;
 	if (sctype >= 0x100) // don't create SPC_AIR particle
 	{
 		r = pmap[y][x];
-		if ((r & 0xFF) != ELEM_MULTIPP)
+		switch (sctype - 0x100)
 		{
-			slife = parts[i].life;
-			switch (sctype - 0x100)
+		case 0:
+			if (!(parts[i].tmp2&0x3FFFFFFF))
 			{
-			case 1:
-				switch (rand() & 3)
+				sim->kill_part(i);
+				return 1;
+			}
+			else if ((r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 34)
+			{
+				transportPhotons(sim, i, x, y, &parts[i], &parts[r>>8]);
+				return 1;
+			}
+			break;
+		case 1:
+			if ((r&0xFF) != ELEM_MULTIPP)
+			{
+				switch (rand()%4)
 				{
 					case 0:
 						sim->part_change_type(i, x, y, PT_PHOT);
@@ -78,8 +94,8 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						parts[i].tmp = 0;
 						break;
 				}
-				break;
 			}
+			break;
 		}
 		return 0;
 	}
@@ -105,6 +121,7 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 		r = pmap[y][x];
 		if (r)
 		{
+			int slife;
 			switch (r&0xFF)
 			{
 			case PT_PLSM:
@@ -134,15 +151,10 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 						parts[s].life = 0;
 				}
 				break;
-			/*
 			case PT_CAUS:
-				{
-					sim->part_change_type(r>>8, x, y, PT_SPRK); // probably inverse for NEUT???
-					parts[r>>8].life = 128 + rand()%128;
-					parts[r>>8].ctype = PT_RFRG;
-				}
+				sim->part_change_type(r>>8, x, y, PT_RFRG); // probably inverse for NEUT???
+				parts[r>>8].tmp = * (int*) &(sim->pv[y/CELL][x/CELL]); // floating point hacking
 				break;
-			*/
 			case PT_FILT:
 				sim->part_change_type(i, x, y, PT_PHOT);
 				parts[i].ctype = 0x3FFFFFFF;
@@ -191,42 +203,16 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					}
 				}
 				break;
-/*
-			case PT_TUNG:
-			case PT_BRMT:
-				if (((r & 0xFF) == PT_TUNG || parts[r >> 8].ctype == PT_TUNG) && !(rand()%50))
-				{
-					sim->create_part(r>>8, x, y, PT_E187);
-				}
-				break;
-*/
 			case PT_INVIS:
 				parts[i].ctype = PT_NEUT;
-			/*
-			case PT_PLUT:
-				if (parts[r>>8].tmp2 > 0)
-				{
-					parts[r>>8].tmp2 = 0;
-					sim->part_change_type(r>>8, x, y, PT_POLO);
-				}
-				break;
-			*/
 			case PT_SPNG:
 				sim->part_change_type(r>>8, x, y, PT_GEL);
 				parts[r>>8].tmp = parts[r>>8].life;
 				break;
-			/* viruses has replication? */
-			case PT_VRSS:
-				if (parts[r>>8].tmp2 == PT_EXOT) // if is infected EXOT
-					sim->create_part(r>>8, x, y, PT_CLNE);
-				else if (parts[r>>8].tmp2 == PT_ETRD) // if is infected ETRD
-					sim->create_part(r>>8, x, y, PT_PCLN);
-				break;
 			case PT_VIRS:
-				if (parts[r>>8].tmp2 == PT_EXOT) // if is infected EXOT
-					sim->create_part(r>>8, x, y, PT_BCLN);
-				else if (parts[r>>8].tmp2 == PT_ETRD) // if is infected ETRD
-					sim->create_part(r>>8, x, y, PT_PBCN);
+			case PT_VRSS:
+			case PT_VRSG:
+				parts[r>>8].tmp4 = PT_NONE;
 				break;
 			default:
 				break;
@@ -253,8 +239,9 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					float velocity2 = powf(parts[r>>8].vx, 2.0f)+powf(parts[r>>8].vy, 2.0f);
 					if (velocity1 + velocity2 > 15.0f && !pmap[y+ry][x+rx])
 					{
+						if (parts[i].life)
+							parts[i].life += parts[r>>8].life; // merge this with PROT's life.
 						sim->part_change_type(r>>8, x, y, PT_BOMB);
-						parts[r>>8].life = 0;
 					}
 				}
 			}
@@ -266,8 +253,15 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 
 //#TPT-Directive ElementHeader Element_E186 static int graphics(GRAPHICS_FUNC_ARGS)
 int Element_E186::graphics(GRAPHICS_FUNC_ARGS)
-
 {
+	if (cpart->ctype == 0x100)
+	{
+		// Emulate the PHOT graphics
+		tpart_phot.ctype = cpart->tmp2;
+		tpart_phot.flags = cpart->flags;
+		Element_PHOT::graphics(ren, &tpart_phot, nx, ny, pixel_mode, cola, colr, colg, colb, firea, firer, fireg, fireb);
+		return 0;
+	}
 	*firea = 70;
 	*firer = *colr;
 	*fireg = *colg;
@@ -275,6 +269,34 @@ int Element_E186::graphics(GRAPHICS_FUNC_ARGS)
 
 	*pixel_mode |= FIRE_ADD;
 	return 0;
+}
+
+//#TPT-Directive ElementHeader Element_E186 static void transportPhotons(Simulation* sim, int i, int x, int y, Particle *phot, Particle *other1)
+void Element_E186::transportPhotons(Simulation* sim, int i, int x, int y, Particle *phot, Particle *other1)
+{
+	if ((sim->photons[y][x]>>8) == i)
+		sim->photons[y][x] = 0;
+	int nx = x + other1->tmp, ny = y + other1->tmp2;
+	if (sim->edgeMode == 2)
+	{
+		// maybe sim->remainder_p ?
+		nx = (nx-CELL) % (XRES-2*CELL) + CELL;
+		(nx < CELL) && (nx += (XRES-2*CELL));
+		ny = (ny-CELL) % (YRES-2*CELL) + CELL;
+		(ny < CELL) && (ny += (YRES-2*CELL));
+	}
+	else if (nx < 0 || ny < 0 || nx >= XRES || ny >= YRES)
+	{
+		sim->kill_part(i);
+		return;
+	}
+	phot->x = (float)nx;
+	phot->y = (float)ny;
+	phot->type = PT_PHOT;
+	phot->ctype = phot->tmp2;
+	phot->tmp2 = 0;
+	sim->photons[ny][nx] = PT_PHOT|(i<<8);
+	// return;
 }
 
 

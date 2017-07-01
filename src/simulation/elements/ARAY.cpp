@@ -155,14 +155,17 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 								case 20:
 									if (!(modFlag & 1))
 									{
-										if (!colored)
-											colored = 0x3FFFFFFF;
-										tmp[0] = sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
-										if (parts[r].tmp & 0x1)
-											tmp[0] = ~tmp[0];
-										colored &= tmp[0];
-										if (!colored)
-											goto break1a;
+										if (!destroy)
+										{
+											if (!colored)
+												colored = 0x3FFFFFFF;
+											tmp[0] = sim->elements[parts[r].ctype & 0xFF].PhotonReflectWavelengths;
+											if (parts[r].tmp2 & 0x1)
+												tmp[0] = ~tmp[0];
+											colored &= tmp[0];
+											if (!colored)
+												goto break1a;
+										}
 									}
 									else
 									{
@@ -225,16 +228,20 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									case 7: // go "<"
 										nxi = -1; nyi = 0;
 										break;
+									case 10: // "-" reflect
+										nyi = -nyi;
+										break;
+									case 11: // "|" reflect
+										nxi = -nxi;
+										break;
 									case 8:
 									case 9:
 										while (nxx += nxi, nyy += nyi, BOUNDS_CHECK)
 										{
 											int front1 = pmap[y+nyy][x+nxx];
 											if (!front1) goto break1a;
-											else if ((front1 & 0xFF) == PT_FILT)
-											{
+											if ((front1 & 0xFF) == PT_FILT)
 												parts[front1>>8].life = 4;
-											}
 											else if ((front1 & 0xFF) == PT_ARAY)
 											{
 												float ftemp = parts[front1>>8].temp + (tmp[1] == 8 ? 1 : -1) * parts[r].tmp2;
@@ -244,6 +251,21 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											else goto break1a;
 										}
 										goto break1a;
+									case 12:
+									case 13:
+										{
+											int nxi2 = (tmp[1] == 12 ? -nyi : nyi);
+											int nyi2 = (tmp[1] == 12 ? nxi : -nxi);
+											tmp[2] = nxx; tmp[3] = nyy;
+											while (nxx += nxi2, nyy += nyi2, BOUNDS_CHECK)
+											{
+												r = pmap[y+nyy][x+nxx];
+												if ((r&0xFF) != PT_FILT) break;
+												parts[r>>8].ctype = colored;
+											}
+											nxx = tmp[2] - nxi; nyy = tmp[3] - nyi;
+										}
+										continue;
 									}
 									nxx -= nxi; nyy -= nyi;
 									max_turn--;
@@ -286,11 +308,34 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											int front1 = pmap[y+nyi+nyy][x+nxi+nxx];
 											switch (front1 & 0xFF)
 											{
+											case PT_NONE:
+												sim->create_part(-1, x+nxi+nxx, y+nyi+nyy, PT_BRAY);
+											break;
 											case PT_FRAY:
 												tmpz2 += parts[front1 >> 8].tmp;
 											break;
 											case PT_INVIS:
 												tmpz2 += (int)(sim->sim_max_pressure + 0.5f);
+											break;
+											case ELEM_MULTIPP:
+												while (BOUNDS_CHECK && (front1&0xFF) == ELEM_MULTIPP && parts[front1>>8].life == 5)
+												{
+													if (!destroy)
+													{
+														parts[front1 >> 8].tmp  = 1;
+														parts[front1 >> 8].tmp2 = tmp[0]*nxi;
+														parts[front1 >> 8].tmp3 = tmp[0]*nyi;
+													}
+													else
+													{
+														parts[front1 >> 8].tmp  = 0;
+														parts[front1 >> 8].tmp2 = 0;
+													}
+													nxx += nxi; nyy += nyi;
+													front1 = pmap[y+nyi+nyy][x+nxi+nxx];
+												}
+												if (!nostop) goto break1a;
+												nxx -= nxi; nyy -= nyi;
 											break;
 											}
 										}
@@ -367,14 +412,40 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										case 5:
 											if (rt == PT_WOOD)
 												sim->part_change_type(r, x+nxi+nxx, y+nyi+nyy, PT_SAWD);
-											else if (rt == PT_ARAY || rt == PT_HEAC)
+											else if (rt == PT_ARAY || rt == PT_BRAY || rt == PT_HEAC)
+											{
 												parts[r].temp = parts[i].temp;
+												if (rt == PT_BRAY)
+												{
+													if (nostop && !(parts[r].tmp >> 1))
+													{
+														parts[r].tmp = 1;
+														parts[r].life = 1020;
+													}
+													else if (destroy)
+													{
+														parts[r].tmp = 2;
+														parts[r].life = 1;
+													}
+												}
+											}
 											continue;
 										case 6: // melting HEAC
 											if (rt == PT_HEAC && parts[r].temp > sim->elements[PT_HEAC].HighTemperature)
 											{
 												sim->part_change_type(r, x+nxi+nxx, y+nyi+nyy, PT_LAVA);
 												parts[r].ctype = PT_HEAC;
+											}
+											else if (rt == PT_VIBR || rt == PT_BVBR) // VIBR Explosion?
+											{
+												if (destroy)
+												{
+													if (parts[r].life)
+														parts[r].tmp2 = 1;
+													parts[r].tmp = 0;
+												}
+												else if (!parts[r].life)
+													parts[r].life = 750;
 											}
 											continue;
 										}

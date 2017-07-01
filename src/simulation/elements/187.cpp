@@ -54,6 +54,8 @@ Element_E187::Element_E187()
 int Element_E187::update(UPDATE_FUNC_ARGS)
 { // for both 'E187' and 'E188'
 	int r, rx, ry, stmp, stmp2, rt;
+	int rndstore;
+	static int table1[8] = {-2,-1,-1,0,0,1,1,2};
 	switch (parts[i].ctype) {
 	case 0:
 		{
@@ -80,32 +82,36 @@ int Element_E187::update(UPDATE_FUNC_ARGS)
 			{
 				if (parts[i].temp < 160.0f)
 					parts[i].tmp |= 0x4;
+				for (int trade = 0; trade < 5; trade++) // mixing this with GLOW/ISOZ
+				{
+					if (!(trade%2)) rndstore = rand();
+					rx = table1[rndstore&7];
+					rndstore >>= 3;
+					ry = table1[rndstore&7];
+					rndstore >>= 3;
+					r = sim->pmap[y+ry][x+rx];
+					if (!(r && (rx || ry))) continue;
+					if ((r&0xFF) == PT_GLOW || (r&0xFF) == PT_ISOZ)
+					{
+						parts[i].x = parts[r>>8].x;
+						parts[i].y = parts[r>>8].y;
+						parts[r>>8].x = x;
+						parts[r>>8].y = y;
+						pmap[y][x] = r;
+						pmap[y+ry][x+rx] = (i<<8)|parts[i].type;
+						return 1;
+					}
+					else if ((r&0xFF) == PT_E187 && parts[r>>8].ctype && parts[r>>8].tmp && !(rand()%40))
+					{
+						parts[i].tmp &= 0xFFFFFFFE;
+						sim->pv[y/CELL][x/CELL] += 3.0f;
+					}
+				}
 			}
 		}
 		break;
-	case 1:
-		if (parts[i].tmp)
-			for (rx=-2; rx<3; rx++)
-				for (ry=-2; ry<3; ry++)
-					if (BOUNDS_CHECK)
-					{
-						r = pmap[y+ry][x+rx];
-						if (!r)
-							break;
-						switch (r & 0xFF)
-						{
-						case PT_E187:
-							if (!parts[r>>8].ctype && !(rand()%200))
-							{
-								parts[r>>8].tmp &= 0xFFFFFFFE;
-								sim->pv[y/CELL][x/CELL] += 3.0f;
-							}
-							break;
-						default:
-							break;
-						}
-					}
-		break;
+	// case 1:
+	//	break;
 	default:
 		break;
 	}

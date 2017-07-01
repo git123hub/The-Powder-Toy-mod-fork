@@ -2,6 +2,11 @@
 #include "simulation/Air.h"
 #include "simulation/MULTIPPE_Update.h"
 
+#ifdef LUACONSOLE
+#include "lua/LuaScriptInterface.h"
+#include "lua/LuaScriptHelper.h"
+#endif
+
 #ifdef _MSC_VER
 unsigned msvc_ctz(unsigned a)
 {
@@ -23,6 +28,7 @@ unsigned msvc_clz(unsigned a)
 
 
 // 'UPDATE_FUNC_ARGS' definition: Simulation* sim, int i, int x, int y, int surround_space, int nt, Particle *parts, int pmap[YRES][XRES]
+// FLAG_SKIPMOVE: not only implemented for PHOT
 
 int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 {
@@ -223,7 +229,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		}
 		r = sim->photons[y][x];
 		rndstore = rand();
-		if (r)
+		if (r && (r&0xFF) != PT_GRVT)
 		{
 			parts[i].tmp += 2;
 			if (parts[r>>8].temp > 370.0f)
@@ -233,14 +239,13 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			rndstore >>= 4;
 		}
 		// Pressure absorption code
-		if (sim->pv[y/CELL][x/CELL] > 2.5)
 		{
-			parts[i].tmp += 10;
-			sim->pv[y/CELL][x/CELL]--;
-		}
-		else if (sim->pv[y/CELL][x/CELL] < -2.5)
-		{
-			sim->pv[y/CELL][x/CELL]++;
+			float *pv1 = &sim->pv[y/CELL][x/CELL];
+			{
+				rii = (int)(*pv1);
+				parts[i].tmp += *pv1 > 0.0f ? (10 * rii) : 0;
+				*pv1 -= (float) rii;
+			}
 		}
 		// Neighbor check loop
 		for (rx=-1; rx<2; rx++)
@@ -289,8 +294,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					}
 					if (parts[i].tmp > parts[r>>8].tmp)
 					{
-						int transfer = parts[i].tmp - parts[r>>8].tmp;
-						(transfer < 4) && (transfer = 1); // cmov ???
+						int transfer = (parts[i].tmp - parts[r>>8].tmp) >> 1;
+						(transfer < 2) && (transfer = 1); // maybe CMOV instruction?
 						parts[r>>8].tmp += transfer;
 						parts[i].tmp -= transfer;
 						break;
@@ -309,6 +314,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			parts[i].life = 1000;
 			// parts[i].tmp2 = 0;
 			sim->emp2_trigger_count ++;
+			return return_value;
 		}
 		parts[i].temp += 12;
 		{
@@ -358,80 +364,87 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					{
 						switch (rtmp & 0xFF)
 						{
-							case 0:
-								if (Element_MULTIPP::maxPrior <= parts[i].ctype)
+						case 0:
+							if (Element_MULTIPP::maxPrior <= parts[i].ctype)
+							{
+								sim->SimExtraFunc |= 0x81;
+								Element_MULTIPP::maxPrior = parts[i].ctype;
+							}
+							break;
+						case 1: sim->SimExtraFunc |=  0x02; break;
+						case 2: sim->SimExtraFunc |=  0x08; break;
+						case 3: sim->SimExtraFunc &= ~0x08; break;
+						case 4: sim->SimExtraFunc |=  0x10; break;
+						case 5: sim->SimExtraFunc |=  0x20; break;
+						case 6:
+							switch (parts[r>>8].ctype)
+							{
+								case PT_NTCT: Element_PHOT::ignite_flammable = 0; break;
+								case PT_PTCT: Element_PHOT::ignite_flammable = 1; break;
+								default: sim->SimExtraFunc |= 0x40;
+							}
+							break;
+						case 7:
+							if (parts[i].temp < 273.15f)
+								parts[i].temp = 273.15f;
+							rdif = (int)(parts[i].temp - 272.65f);
+							if (parts[r>>8].ctype != PT_INST)
+								rdif /= 100.0f;
+							sim->sim_max_pressure += rdif;
+							if (sim->sim_max_pressure > 256.0f)
+								sim->sim_max_pressure = 256.0f;
+							break;
+						case 8:
+							if (parts[i].temp < 273.15f)
+								parts[i].temp = 273.15f;
+							rdif = (int)(parts[i].temp - 272.65f);
+							if (parts[r>>8].ctype != PT_INST)
+								rdif /= 100.0f;
+							sim->sim_max_pressure -= rdif;
+							if (sim->sim_max_pressure < 0.0f)
+								sim->sim_max_pressure = 0.0f;
+							break;
+						case 9: // set sim_max_pressure
+							if (parts[i].temp < 273.15f)
+								parts[i].temp = 273.15f;
+							if (parts[i].temp > 273.15f + 256.0f)
+								parts[i].temp = 273.15f + 256.0f;
+							sim->sim_max_pressure = (int)(parts[i].temp - 272.65f);
+							break;
+						case 10: // reset currentTick
+							sim->lightningRecreate -= sim->currentTick;
+							if (sim->lightningRecreate < 0)
+								sim->lightningRecreate = 0;
+							sim->currentTick = 0;
+							if (parts[r>>8].ctype == PT_INST)
+								sim->elementRecount = true;
+							break;
+						case 11:
+							rctype = parts[r>>8].ctype;
+							rr = pmap[y-ry][x-rx];
+							{
+								int rrt = parts[rr>>8].ctype & 0xFF, tFlag = 0;
+								switch (rr & 0xFF)
 								{
-									sim->SimExtraFunc |= 0x81;
-									Element_MULTIPP::maxPrior = parts[i].ctype;
+									case PT_STOR: tFlag = PROP_CTYPE_INTG; break;
+									case PT_CRAY: tFlag = PROP_CTYPE_WAVEL; break;
+									case PT_DRAY: tFlag = PROP_CTYPE_SPEC; break;
 								}
-							break;
-							case 1: sim->SimExtraFunc |=  0x02; break;
-							case 2: sim->SimExtraFunc |=  0x08; break;
-							case 3: sim->SimExtraFunc &= ~0x08; break;
-							case 4: sim->SimExtraFunc |=  0x10; break;
-							case 5: sim->SimExtraFunc |=  0x20; break;
-							case 6: sim->SimExtraFunc |=  0x40; break;
-							case 7:
-								if (parts[i].temp < 273.15f)
-									parts[i].temp = 273.15f;
-								rdif = (int)(parts[i].temp - 272.65f);
-								if (parts[r>>8].ctype != PT_INST)
-									rdif /= 100.0f;
-								sim->sim_max_pressure += rdif;
-								if (sim->sim_max_pressure > 256.0f)
-									sim->sim_max_pressure = 256.0f;
-							break;
-							case 8:
-								if (parts[i].temp < 273.15f)
-									parts[i].temp = 273.15f;
-								rdif = (int)(parts[i].temp - 272.65f);
-								if (parts[r>>8].ctype != PT_INST)
-									rdif /= 100.0f;
-								sim->sim_max_pressure -= rdif;
-								if (sim->sim_max_pressure < 0.0f)
-									sim->sim_max_pressure = 0.0f;
-							break;
-							case 9: // set sim_max_pressure
-								if (parts[i].temp < 273.15f)
-									parts[i].temp = 273.15f;
-								if (parts[i].temp > 273.15f + 256.0f)
-									parts[i].temp = 273.15f + 256.0f;
-								sim->sim_max_pressure = (int)(parts[i].temp - 272.65f);
-							break;
-							case 10: // reset currentTick
-								sim->lightningRecreate -= sim->currentTick;
-								if (sim->lightningRecreate < 0)
-									sim->lightningRecreate = 0;
-								sim->currentTick = 0;
-								if (parts[r>>8].ctype == PT_INST)
-									sim->elementRecount = true;
-							break;
-							case 11:
-								rctype = parts[r>>8].ctype;
-								rr = pmap[y-ry][x-rx];
+								switch (rctype)
 								{
-									int rrt = parts[rr>>8].ctype & 0xFF, tFlag = 0;
-									switch (rr & 0xFF)
-									{
-										case PT_STOR: tFlag = PROP_CTYPE_INTG; break;
-										case PT_CRAY: tFlag = PROP_CTYPE_WAVEL; break;
-										case PT_DRAY: tFlag = PROP_CTYPE_SPEC; break;
-									}
-									switch (rctype)
-									{
-										case PT_PSCN: sim->elements[rrt].Properties2 |=  tFlag; break;
-										case PT_NSCN: sim->elements[rrt].Properties2 &= ~tFlag; break;
-										case PT_INWR: sim->elements[rrt].Properties2 ^=  tFlag; break;
-									}
+									case PT_PSCN: sim->elements[rrt].Properties2 |=  tFlag; break;
+									case PT_NSCN: sim->elements[rrt].Properties2 &= ~tFlag; break;
+									case PT_INWR: sim->elements[rrt].Properties2 ^=  tFlag; break;
 								}
+							}
 							break;
-							case 12:
-								if (Element_MULTIPP::maxPrior < parts[i].ctype)
-								{
-									sim->SimExtraFunc |= 0x80;
-									sim->SimExtraFunc &= ~0x01;
-									Element_MULTIPP::maxPrior = parts[i].ctype;
-								}
+						case 12:
+							if (Element_MULTIPP::maxPrior < parts[i].ctype)
+							{
+								sim->SimExtraFunc |= 0x80;
+								sim->SimExtraFunc &= ~0x01;
+								Element_MULTIPP::maxPrior = parts[i].ctype;
+							}
 							break;
 							// 'decorations_enable' 属于 'Renderer', 不是 'Simulation'
 						}
@@ -679,7 +692,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						r = pmap[y+ry][x+rx];
 						if ((r & 0xFF) == ELEM_MULTIPP && parts[r>>8].life == 16)
 							r = pmap[y+2*ry][x+2*rx];
-						if ((r & 0xFF) == PT_SPRK)
+						if ((r & 0xFF) == PT_SPRK /* && parts[r>>8].life == 3 */)
 							goto break2a;
 					}
 			break;
@@ -691,9 +704,11 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					rx = tron_rx[rii];
 					ry = tron_ry[rii];
 					rr = pmap[y+ry][x+rx];
-					if ((rr&0xFF) == PT_VIRS || (rr&0xFF) == PT_VRSS || (rr&0xFF) == PT_VRSG) // if is virus
+					if (((rr&0xFF) == PT_VIRS || (rr&0xFF) == PT_VRSS || (rr&0xFF) == PT_VRSG) && !parts[rr>>8].pavg[0]) // if is virus
 					{
-						parts[r>>8].pavg[0] += 10;
+						// VIRS.cpp: .pavg[0] measures how many frames until it is cured (0 if still actively spreading and not being cured)
+						(rtmp <= 0) && (rtmp = 15);
+						parts[rr>>8].pavg[0] = (float)rtmp;
 					}
 				}
 			}
@@ -1356,7 +1371,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							else
 								parts[r>>8].life = rrx;
 						}
-						else if ((r&0xFF) == PT_METL || (r&0xFF) == PT_PSCN || (r&0xFF) == PT_NSCN || (r&0xFF) == PT_INDC)
+						else if (sim->elements[r&0xFF].Properties & PROP_CONDUCTS || (r&0xFF) == PT_INST)
 						{
 							if (rry)
 								parts[r>>8].life = 0;
@@ -1670,6 +1685,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								{
 								case PT_PHOT:
 									if (np > i) parts[np].flags |= FLAG_SKIPMOVE; // like E189 (life = 11)
+									parts[np].temp = parts[i].temp;
 									break;
 								case PT_LIGH:
 									parts[np].tmp = atan2(-ry, (float)rx)/M_PI*180;
@@ -1749,7 +1765,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									{
 										rr = pmap[y-ry][x-rx];
 										rt = rr & 0xFF;
-										if (rt == PT_WATR || rt == PT_DSTW || rt == PT_SLTW || rt == PT_CBNW)
+										if (rt == PT_WATR || rt == PT_DSTW || rt == PT_SLTW || rt == PT_CBNW || rt == PT_FRZW || rt == PT_WTRV)
 										{
 											rr >>= 8;
 											if(!(rand()%3))
@@ -2263,6 +2279,23 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						if (rctype == parts[r>>8].ctype && (rctype != PT_LAVA || rctypeExtra == parts[r>>8].tmp))
 							rtmp += 5;
 						break;
+					case PT_SPNG:
+					case PT_GEL:
+						{
+							int * absorb_ptr = (r & 0xFF) == PT_SPNG ? &parts[r>>8].life : &parts[r>>8].tmp;
+							rctype || (parts[i].ctype = rctype = PT_WATR);
+							if (rctype == PT_WATR || rctype == PT_DSTW || rctype == PT_CBNW)
+							{
+								if (sim->pv[y/CELL][x/CELL]<=3 && sim->pv[y/CELL][x/CELL]>=-3)
+								{
+									rtmp += *absorb_ptr, *absorb_ptr = 0;
+								}
+								else
+								{
+									*absorb_ptr += rtmp, rtmp = 0;
+								}
+							}
+						}
 					default:
 						if (sim->elements[r&0xFF].Properties & (TYPE_PART | TYPE_LIQUID | TYPE_GAS))
 						{
@@ -2287,6 +2320,11 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			parts[i].tmp = rtmp;
 		}
 		break;
+#if !defined(RENDERER) && defined(LUACONSOLE)
+	default: // reserved by Lua
+		if (lua_el_mode[parts[i].type] == 1)
+			return_value = 0;
+#endif
 	}
 		
 	return return_value;

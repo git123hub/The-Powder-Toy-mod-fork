@@ -1580,7 +1580,8 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 				c->ResetAir();
 			break;
 		case 'm':
-			alternateState = 4;
+			if (showDebug)
+				alternateState = 4;
 			break;
 		case 'c':
 			if(ctrl)
@@ -2395,7 +2396,7 @@ void GameView::OnDraw()
 			"PRSINS", "PRSINS", "TRONI", "TRONO", "LASER", "DIRCH", "HEATER", "PHTDUP", "VIBR2", "VIBR2",
 			"DEBUG", "PHTEM", "SPREFL", "DECOR", "DECO2", "PRTINS", "LOGICG", "PHDIOD", "DECO3", "NOTGIN",
 			"PARTEM", "EXPANDER", "EN_REFL", "STKMJ", "MOV_DRAY", "EXT_DRAY", "BUTTON", "STKSET", "RAY_REFL", "TRONE",
-			"TRONF", "TRONDL", "E189F32", "WIFI2", "FILTINC", "RNMRAY", "TMP2_T", "L_ANT", "PART_TR"
+			"TRONF", "TRONDL", "RAY_PC", "WIFI2", "FILTINC", "RNMRAY", "TMP2_T", "L_ANT", "PART_TR"
 		};
 		const int maxE189Type = 38;
 		static const int E189IntM[] = {0x81055020, 0x00000026};
@@ -2429,20 +2430,18 @@ void GameView::OnDraw()
 			{
 				switch (type)
 				{
+				case PT_E186:
+					if (ctype == 0x100)
+					{
+						wavelengthGfx = sample_particle->tmp2;
+						el_prop |= PROP_DEBUG_USE_TMP2;
+					}
+					break;
 				case ELEM_MULTIPP:
 					if (partlife == 4 || partlife == 7 || partlife == 11)
-						wavelengthGfx = (ctype&0x3FFFFFFF);
-					/*
-					else if (partlife == 5)
 					{
-						int partfilt = parttmp;
-						int partfilt2 = sample_particle->tmp2;
-						if (partfilt >= 1 && partfilt <= 6 && partfilt != 5)
-							wavelengthGfx = (ctype&0x3FFFFFFF);
-						if (partfilt == 5 || partfilt == 8 || !partfilt && ((0x0002E000 >> partfilt2) & 1))
-							partint = 1;
+						wavelengthGfx = (ctype&0x3FFFFFFF);
 					}
-					*/
 					else if (partlife == 13)
 					{
 						if (sample_particle->tmp2 == 0x1)
@@ -2466,6 +2465,8 @@ void GameView::OnDraw()
 					{
 						ctype &= 0xFF;
 					}
+					if (wavelengthGfx)
+						partint = 1;
 					break;
 				}
 			}
@@ -2478,6 +2479,7 @@ void GameView::OnDraw()
 					if (!(el_prop & PROP_CTYPE_INTG))
 					{
 						ctype = (ctype & 0x1FFFFFFF ^ 0x10000000) - 0x10000000;
+						partint |= (wavelengthGfx ? 1 : 0);
 					}
 				}
 				
@@ -2488,6 +2490,7 @@ void GameView::OnDraw()
 			
 			if (showDebug)
 			{
+				static const char* filtModes[] = {"set colour", "AND", "OR", "subtract colour", "red shift", "blue shift", "no effect", "XOR", "NOT", "old QRTZ scattering", "variable red shift", "variable blue shift"};
 				if (type == PT_LAVA && c->IsValidElement(ctype))
 					sampleInfo << "Molten " << c->ElementResolve(ctype, -1);
 				else if ((type == PT_PIPE || type == PT_PPIP) && c->IsValidElement(ctype))
@@ -2497,7 +2500,6 @@ void GameView::OnDraw()
 				else if (type == PT_FILT)
 				{
 					sampleInfo << c->ElementResolve(type, ctype);
-					const char* filtModes[] = {"set colour", "AND", "OR", "subtract colour", "red shift", "blue shift", "no effect", "XOR", "NOT", "old QRTZ scattering", "variable red shift", "variable blue shift"};
 					if (parttmp>=0 && parttmp<=11)
 						sampleInfo << " (" << filtModes[parttmp]; // << ")";
 					else
@@ -2535,18 +2537,22 @@ void GameView::OnDraw()
 					}
 					else
 						sampleInfo << c->ElementResolve(type, ctype);
-					if (wavelengthGfx || partint)
+					if (partint)
 						sampleInfo << " (" << ctype << ")";
 					// Some elements store extra LIFE info in upper bits of ctype, instead of tmp/tmp2
-					else if (type == PT_CRAY || type == PT_DRAY || type == PT_CONV)
-						sampleInfo << " (" << c->ElementResolve(ctype&0xFF, ctype>>8) << ")";
-					else if (type == ELEM_MULTIPP && (partlife == 20 || partlife == 35))
+					else if (type == PT_CRAY || type == PT_DRAY || type == PT_CONV || type == ELEM_MULTIPP && (partlife == 20 || partlife == 35))
 					{
 						sampleInfo << " (";
-						if ((ctype&0xFF) == ELEM_MULTIPP && (ctype>>8) >= 0 && (ctype>>8) <= maxE189Type)
+						if ((ctype&0xFF) == ELEM_MULTIPP && type != PT_DRAY && (ctype>>8) >= 0 && (ctype>>8) <= maxE189Type)
 							sampleInfo << E189Modes[ctype>>8];
 						else
+						{
 							sampleInfo << c->ElementResolve(ctype&0xFF, ctype>>8);
+							if ((ctype&0xFF) == PT_FILT && type != PT_DRAY && (ctype>>8) >= 0 && (ctype>>8) <= 11)
+							{
+								sampleInfo << " (" << filtModes[ctype>>8] << ")";
+							}
+						}
 						sampleInfo << ")";
 					}
 					else if (partstr)

@@ -49,7 +49,7 @@ Element_NEUT::Element_NEUT()
 //#TPT-Directive ElementHeader Element_NEUT static int update(UPDATE_FUNC_ARGS)
 int Element_NEUT::update(UPDATE_FUNC_ARGS)
 {
-	int r, rx, ry;
+	int r, rx, ry, boundf = 0;
 	int pressureFactor = 3 + (int)sim->pv[y/CELL][x/CELL];
 	for (rx=-1; rx<2; rx++)
 		for (ry=-1; ry<2; ry++)
@@ -141,6 +141,10 @@ int Element_NEUT::update(UPDATE_FUNC_ARGS)
 				case PT_COAL:
 					if (!(rand()%20))
 						sim->create_part(r>>8, x+rx, y+ry, PT_WOOD);
+					break;
+				case PT_BCOL:
+					if (!(rand()%20))
+						sim->create_part(r>>8, x+rx, y+ry, PT_SAWD);
 					break;
 				case PT_DUST:
 					if (!(rand()%20))

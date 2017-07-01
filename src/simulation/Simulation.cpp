@@ -63,15 +63,19 @@ int Simulation::Load(int fullX, int fullY, GameSave * save)
 		{
 			GameSave::PaletteItem pi = *iter;
 			//This makes it only apply to lua elements (greater than the default number of elements), because if not it glitches for default elements when they change name
-			if(pi.second >= DEFAULT_PT_NUM && pi.second < PT_NUM)
+			if (pi.second > 0 && pi.second < PT_NUM)
 			{
-				int myId = 0;//pi.second;
-				for(int i = 0; i < PT_NUM; i++)
+				int myId = 0;
+				for (int i = 0; i < PT_NUM; i++)
 				{
-					if(elements[i].Enabled && elements[i].Identifier == pi.first)
+					if (elements[i].Enabled && elements[i].Identifier == pi.first)
 						myId = i;
 				}
-				partMap[pi.second] = myId;
+				// if this is a custom element, set the ID to the ID we found when comparing identifiers in the palette map
+				// set type to 0 if we couldn't find an element with that identifier present when loading,
+				//  unless this is a default element, in which case keep the current ID, because otherwise when an element is renamed it wouldn't show up anymore in older saves
+				if (myId != 0 || pi.first.find("DEFAULT_PT_") != 0)
+					partMap[pi.second] = myId;
 			}
 		}
 	}
@@ -102,9 +106,13 @@ int Simulation::Load(int fullX, int fullY, GameSave * save)
 			{
 				tempPart.ctype = partMap[tempPart.ctype];
 			}
-		if (tempPart.type == PT_PIPE || tempPart.type == PT_PPIP)
+		if (tempPart.type == PT_PIPE || tempPart.type == PT_PPIP || tempPart.type == PT_STOR)
 		{
 			tempPart.tmp = partMap[tempPart.tmp&0xFF] | (tempPart.tmp&~0xFF);
+		}
+		if ((tempPart.type == PT_VIRS || tempPart.type == PT_VRSG || tempPart.type == PT_VRSS) && tempPart.tmp4 > 0 && tempPart.tmp4 < PT_NUM)
+		{
+			tempPart.tmp4 = partMap[tempPart.tmp4];
 		}
 
 		//Replace existing
@@ -279,7 +287,7 @@ GameSave * Simulation::Save(int fullX, int fullY, int fullX2, int fullY2)
 
 	if(storedParts)
 	{
-		for(int i = DEFAULT_PT_NUM; i < PT_NUM; i++)
+		for(int i = 0; i < PT_NUM; i++)
 		{
 			if(elements[i].Enabled && elementCount[i])
 			{
@@ -2164,7 +2172,7 @@ void Simulation::init_can_move()
 		}
 
 		//SAWD cannot be displaced by other powders
-		if (elements[movingType].Properties & TYPE_PART && (movingType != PT_POLO && movingType != PT_POLC))
+		if (elements[movingType].Properties & TYPE_PART)
 			can_move[movingType][PT_SAWD] = 0;
 	}
 	//a list of lots of things PHOT can move through
@@ -2232,8 +2240,9 @@ void Simulation::init_can_move()
 	
 	can_move[PT_ELEC][PT_POLC] = 2;
 	can_move[PT_POLC][PT_YEST] = 0; // moving type = "POLC", type at destination = yeast
-
-	can_move[PT_E186][PT_BRMT] = 3;
+	can_move[PT_GLOW][PT_E187] = 0;
+	
+	// can_move[PT_E186][PT_BRMT] = 3;
 	
 	can_move[PT_PROT][ELEM_MULTIPP] = 3;
 	can_move[PT_GRVT][ELEM_MULTIPP] = 3;
@@ -2281,7 +2290,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 		switch (r&0xFF)
   		{
 		case PT_LCRY:
-			if (pt==PT_PHOT || pt==PT_ELEC)
+			if (pt==PT_PHOT)
 				result = (parts[r>>8].life > 5)? 2 : 0;
 			break;
 		case PT_GPMP:
@@ -2359,7 +2368,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				case PT_E186:
 					if (rlife == 5 || rlife == 10)
 						return 2; // corrected code
-					if (rlife == 17)
+					if (rlife == 17 || rlife == 34)
 						return 1;
 					return 0;
 				case PT_PROT:
@@ -2373,6 +2382,8 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				case PT_ELEC:
 					if (rlife == 5 || rlife == 22 && (tmp_flag & 2))
 						return 2;
+					else if (rlife == 8)
+						return 1;
 					return 0;
 				case PT_GRVT:
 					if (rlife == 22 && (tmp_flag & 4))
@@ -2381,6 +2392,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				}
 			}
 			return 0; // otherwise. Note using "return", no "break".
+		/*
 		case PT_BRMT:
 			if (pt == PT_E186)
 			{
@@ -2390,6 +2402,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 					result = 0;
 			}
 			break;
+		*/
 		case PT_SPRK:
 			if (pt == PT_DEST)
 			{
@@ -2508,8 +2521,7 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 					Element_MULTIPP::interactDir(this, i, x, y, &parts[i], &parts[r>>8]);
 					break;
 				case 7:
-					if (!(parts[i].flags & FLAG_SKIPMOVE))
-						Element_MULTIPP::duplicatePhotons(this, i, nx, ny, &parts[i], &parts[r>>8]);
+					Element_MULTIPP::duplicatePhotons(this, i, nx, ny, &parts[i], &parts[r>>8]); // already check by FLAG_SKIPMOVE
 					break;
 				}
 				return 1;
@@ -2585,8 +2597,21 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		}
 		case PT_NEUT:  // type = 18
 			if ((r&0xFF) == PT_GLAS || (r&0xFF) == PT_BGLA)
+			{
 				if (rand() < RAND_MAX/10)
 					create_cherenkov_photon(i);
+			}
+			else if ((r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 5)
+			{
+				if (parts[r>>8].tmp > 0 && parts[r>>8].tmp <= 4)
+					Element_MULTIPP::interactDir(this, i, x, y, &parts[i], &parts[r>>8]);
+				else if (!parts[r>>8].tmp && parts[r>>8].tmp2 == 18)
+				{
+					parts[i].ctype = 0x100;
+					parts[i].tmp2 = 0x3FFFFFFF;
+					part_change_type(i, x, y, PT_E186);
+				}
+			}
 			break;
 		case PT_ELEC:  // type = 136
 			if ((r&0xFF) == PT_GLOW)
@@ -2668,6 +2693,16 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 	case ELEM_MULTIPP:
 		if (parts[i].type == PT_E186) // ELEM_MULTIPP (life=17) eats PT_E186
 		{
+			if (parts[r>>8].life == 17)
+			{
+				kill_part(i);
+				return 0;
+			}
+			return 1;
+		}
+		else if (parts[r>>8].life == 8)
+		{
+			parts[r>>8].tmp += (int)(parts[i].temp + 0.5f) << 2;
 			kill_part(i);
 			return 0;
 		}
@@ -3012,38 +3047,39 @@ void Simulation::kill_part(int i)//kills particle number i
 
 	if(parts[i].type > 0 && parts[i].type < PT_NUM && elementCount[parts[i].type])
 		elementCount[parts[i].type]--;
-	if (parts[i].type == PT_STKM)
+
+	// fixes ThePowderToy#444, again
+	switch (parts[i].type)
 	{
+	case PT_STKM:
 		player.spwn = 0;
 		Element_STKM::removeSTKMChilds(this, &player);
-	}
-	else if (parts[i].type == PT_STKM2)
-	{
+		break;
+	case PT_STKM2:
 		player2.spwn = 0;
 		Element_STKM::removeSTKMChilds(this, &player2);
-	}
-	else if (parts[i].type == PT_SPAWN)
-	{
+		break;
+	case PT_SPAWN:
 		if (player.spawnID == i)
 			player.spawnID = -1;
-	}
-	else if (parts[i].type == PT_SPAWN2)
-	{
+		break;
+	case PT_SPAWN2:
 		if (player2.spawnID == i)
 			player2.spawnID = -1;
-	}
-	else if (parts[i].type == PT_FIGH)
-	{
+		break;
+	case PT_FIGH:
 		fighters[(unsigned char)parts[i].tmp].spwn = 0;
 		fighcount--;
 		Element_FIGH::removeFIGHNode(this, i);
-	}
-	else if (parts[i].type == PT_SOAP)
-	{
+		break;
+	case PT_SOAP:
 		Element_SOAP::detach(this, i);
+		break;
+	case PT_ETRD:
+		if (parts[i].life == 0)
+			etrd_life0_count--;
+		break;
 	}
-	else if (parts[i].type == PT_ETRD && parts[i].life == 0)
-		etrd_life0_count--;
 
 	parts[i].type = PT_NONE;
 	parts[i].life = pfree;
@@ -3286,7 +3322,7 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 			else if (drawOn == PT_CRAY)
 			{
 				parts[pmap[y][x]>>8].ctype = t;
-				if (t == PT_LIFE && v >= 0 && v < NGOL)
+				if (t == PT_LIFE && v >= 0 && v < NGOL || t == ELEM_MULTIPP)
 					parts[pmap[y][x]>>8].ctype |= v<<8;
 				if (t == PT_LIGH)
 					parts[pmap[y][x]>>8].ctype |= 30<<8;
@@ -3507,9 +3543,12 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 			parts[i].type = 0;
 			return -1;
 		}
-		int spawnID = create_part(-3, x, y, PT_SPAWN);
-		if (spawnID >= 0)
-			player.spawnID = spawnID;
+		if (p == -2)
+		{
+			int spawnID = create_part(-3, x, y, PT_SPAWN);
+			if (spawnID >= 0)
+				player.spawnID = spawnID;
+		}
 		break;
 	}
 	case PT_STKM2:
@@ -3526,9 +3565,12 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 			parts[i].type = 0;
 			return -1;
 		}
-		int spawnID = create_part(-3, x, y, PT_SPAWN2);
-		if (spawnID >= 0)
-			player2.spawnID = spawnID;
+		if (p == -2)
+		{
+			int spawnID = create_part(-3, x, y, PT_SPAWN2);
+			if (spawnID >= 0)
+				player2.spawnID = spawnID;
+		}
 		break;
 	}
 	case PT_FIGH:
@@ -3631,6 +3673,12 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 		parts[i].tmp2 = 4;
 		break;
 	}
+	case PT_FILT:
+		parts[i].tmp = v;
+		break;
+	case PT_CRAY:
+		parts[i].life = -1;
+		break;
 	case ELEM_MULTIPP:
 	{
 		parts[i].life = v;
@@ -3949,6 +3997,12 @@ void Simulation::UpdateParticles(int start, int end)
 			float gel_scale = 1.0f;
 			if (t==PT_GEL)
 				gel_scale = parts[i].tmp*2.55f;
+			/*
+			else if (t==ELEM_MULTIPP || t==PT_PINVIS)
+			{
+				goto updatefunc_part;
+			}
+			*/
 
 			if (!legacy_enable)
 			{
@@ -4450,7 +4504,7 @@ void Simulation::UpdateParticles(int start, int end)
 #if !defined(RENDERER) && defined(LUACONSOLE)
 			if (lua_el_mode[parts[i].type] && lua_el_mode[parts[i].type] != 3)
 			{
-				if (luacon_elementReplacement(this, i, x, y, surround_space, nt, parts, pmap) || t != parts[i].type)
+				if (luacon_elementReplacement(this, i, x, y, surround_space, nt, parts, pmap) || t != parts[i].type || t == ELEM_MULTIPP)
 					continue;
 				// Need to update variables, in case they've been changed by Lua
 				x = (int)(parts[i].x+0.5f);
@@ -4540,7 +4594,7 @@ killed:
 						clear_y = (int)(clear_yf+0.5f);
 						break;
 					}
-					//block if particle can't move (0), or some special cases where it returns 1 (can_move = 3 but returns 1 meaning particle will be eaten)
+					//block if particle can't move (0), or some special cases where it returns 1 (can_move = 3 but returns 1 meaning particle will be eaten (or slowed down))
 					//also photons are still blocked (slowed down) by any particle (even ones it can move through), and absorb wall also blocks particles
 					int eval = eval_move(t, fin_x, fin_y, NULL);
 					int pmap_fin0 = pmap[fin_y][fin_x];
@@ -5852,29 +5906,6 @@ void Simulation::BeforeSim()
 				}
 			}
 		}
-		
-		// make E189 work
-#if 0
-		if(elementCount[ELEM_MULTIPP] > 0)
-		{
-			for (int i = 0; i <= parts_lastActiveIndex; i++)
-			{
-				if(parts[i].type == ELEM_MULTIPP)
-				{
-					switch (parts[i].life)
-					{
-						case 13:
-						case 18:
-							break;
-						case 16:
-							if (parts[i].tmp2) // use "tmp2" attribute for life value, because "life", "ctype" and "tmp" attributes is used for other purpose.
-								parts[i].tmp2--;
-							break;
-					}
-				}
-			}
-		}
-#endif
 
 		// update PPIP tmp?
 		if (Element_PPIP::ppip_changed)
@@ -5927,17 +5958,6 @@ void Simulation::BeforeSim()
 			}
 			ISWIRE2--;
 		}
-		
-#if 0
-		if (ISWIRE2 > 0)
-		{
-			for (int q = 0; q < 128; q++) // 128 * 32 = 4096 channels
-			{
-				wireless2[q][0] = wireless2[q][1];
-			}
-			ISWIRE--;
-		}
-#endif
 
 		// spawn STKM and STK2
 		if (!player.spwn && player.spawnID >= 0)
@@ -6083,7 +6103,6 @@ Simulation::Simulation():
 	free(platentT);
 
 	std::vector<Element> elementList = GetElements();
-	DEFAULT_PT_NUM = elementList.size();
 	for(int i = 0; i < PT_NUM; i++)
 	{
 		if (i < (int)elementList.size())

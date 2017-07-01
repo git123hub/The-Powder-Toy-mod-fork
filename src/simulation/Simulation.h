@@ -133,7 +133,6 @@ public:
 	int pretty_powder;
 	int sandcolour;
 	int sandcolour_frame;
-	int DEFAULT_PT_NUM;
 	bool no_generating_BHOL;
 
 	int Load(GameSave * save);
