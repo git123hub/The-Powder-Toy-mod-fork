@@ -21,6 +21,8 @@
 #include "Sample.h"
 #include "Snapshot.h"
 
+#include "gui/interface/Engine.h"
+
 #ifdef LUACONSOLE
 #include "lua/LuaScriptInterface.h"
 #include "lua/LuaScriptHelper.h"
@@ -2627,7 +2629,13 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		case PT_BIZR:  // type = 103
 		case PT_BIZRG: // type = 104
 			if ((r&0xFF) == PT_FILT)
+			{
 				parts[i].ctype = Element_FILT::interactWavelengths(&parts[r>>8], parts[i].ctype);
+			/*
+				pmap[y][x] = parts[i].cdcolour;
+				parts[i].cdcolour = r;
+			*/
+			}
 			break;
 		case PT_E186:
 			if (parts[i].ctype == 0x100 && (r&0xFF) != ELEM_MULTIPP) // exit from E189 area
@@ -2690,6 +2698,13 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 			return 0;
 		}
 		break;
+	/*
+	case PT_BIZR:
+	case PT_BIZRG:
+		pmap[y][x] = parts[i].cdcolour;
+		parts[i].cdcolour = r;
+		break;
+	*/
 	case ELEM_MULTIPP:
 		if (parts[i].type == PT_E186) // ELEM_MULTIPP (life=17) eats PT_E186
 		{
@@ -3888,6 +3903,13 @@ void Simulation::UpdateParticles(int start, int end)
 			}
 			if (bmap[y/CELL][x/CELL]==WL_DETECT && emap[y/CELL][x/CELL]<8)
 				set_emap(x/CELL, y/CELL);
+			/*
+			if (parts[i].flags&FLAG_SKIPMOVE)
+			{
+				parts[i].flags &= ~FLAG_SKIPMOVE;
+				continue;
+			}
+			*/
 
 			//adding to velocity from the particle's velocity
 			vx[y/CELL][x/CELL] = vx[y/CELL][x/CELL]*elements[t].AirLoss + elements[t].AirDrag*parts[i].vx;
@@ -6004,7 +6026,9 @@ void Simulation::AfterSim()
 		}
 		if (SimExtraFunc & 0x0040)
 			Element_PHOT::ignite_flammable = !Element_PHOT::ignite_flammable;
-		SimExtraFunc &= ~0x000000F5;
+		if (SimExtraFunc & 0x0100)
+			ui::Engine::Ref().Exit(); // fast exit?
+		SimExtraFunc &= ~0x000001F5;
 		Element_MULTIPP::maxPrior = 0;
 	}
 	if (Extra_FIGH_pause_check)

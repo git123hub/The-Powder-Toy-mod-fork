@@ -320,11 +320,17 @@ sign * GameController::GetSignAt(int x, int y)
 
 void GameController::PlaceSave(ui::Point position)
 {
-	if (gameModel->GetPlaceSave())
+	GameSave *placeSave = gameModel->GetPlaceSave();
+	if (placeSave)
 	{
 		HistorySnapshot();
-		gameModel->GetSimulation()->Load(position.X, position.Y, gameModel->GetPlaceSave());
-		gameModel->SetPaused(gameModel->GetPlaceSave()->paused | gameModel->GetPaused());
+		if (!gameModel->GetSimulation()->Load(position.X, position.Y, placeSave))
+		{
+			gameModel->SetPaused(placeSave->paused | gameModel->GetPaused());
+			// if this is a clipboard and there is no author info, don't do anything
+			if (Client::Ref().IsAuthorsEmpty() || placeSave->authors["type"] != "clipboard")
+				Client::Ref().MergeStampAuthorInfo(placeSave->authors);
+		}
 	}
 }
 
@@ -561,7 +567,10 @@ std::string GameController::StampRegion(ui::Point point1, ui::Point point2)
 	if(newSave)
 	{
 		newSave->paused = gameModel->GetPaused();
-		return Client::Ref().AddStamp(newSave);
+		std::string stampName = Client::Ref().AddStamp(newSave);
+		if (stampName.length() == 0)
+			new ErrorMessage("Could not create stamp", "Error serializing save file");
+		return stampName;
 	}
 	else
 	{
@@ -576,6 +585,13 @@ void GameController::CopyRegion(ui::Point point1, ui::Point point2)
 	newSave = gameModel->GetSimulation()->Save(point1.X, point1.Y, point2.X, point2.Y);
 	if(newSave)
 	{
+		Json::Value clipboardInfo;
+		clipboardInfo["type"] = "clipboard";
+		clipboardInfo["username"] = Client::Ref().GetAuthUser().Username;
+		clipboardInfo["date"] = (Json::Value::UInt64)time(NULL);
+		Client::Ref().SaveAuthorInfo(&clipboardInfo);
+		newSave->authors = clipboardInfo;
+
 		newSave->paused = gameModel->GetPaused();
 		gameModel->SetClipboard(newSave);
 	}
@@ -745,20 +761,27 @@ bool GameController::KeyPress(int key, Uint16 character, bool shift, bool ctrl, 
 				}
 			}
 		}
-		switch(key)
+		if (!gameView->GetPlacingSave())
 		{
-		case SDLK_UP:
-			Element_MULTIPP::Arrow_keys |= 0x1;
-			break;
-		case SDLK_LEFT:
-			Element_MULTIPP::Arrow_keys |= 0x2;
-			break;
-		case SDLK_DOWN:
-			Element_MULTIPP::Arrow_keys |= 0x4;
-			break;
-		case SDLK_RIGHT:
-			Element_MULTIPP::Arrow_keys |= 0x8;
-			break;
+			switch(key)
+			{
+			case SDLK_UP:
+				Element_MULTIPP::Arrow_keys |= 0x1;
+				break;
+			case SDLK_LEFT:
+				Element_MULTIPP::Arrow_keys |= 0x2;
+				break;
+			case SDLK_DOWN:
+				Element_MULTIPP::Arrow_keys |= 0x4;
+				break;
+			case SDLK_RIGHT:
+				Element_MULTIPP::Arrow_keys |= 0x8;
+				break;
+			case SDLK_KP_ENTER:
+			case SDLK_RETURN:
+				Element_MULTIPP::Arrow_keys |= 0x10;
+				break;
+			}
 		}
 	}
 		
@@ -795,6 +818,10 @@ bool GameController::KeyRelease(int key, Uint16 character, bool shift, bool ctrl
 		{
 			sim->player.comm = (int)(sim->player.comm)&7;
 			Element_MULTIPP::Arrow_keys &= ~0x4;
+		}
+		if (key == SDLK_KP_ENTER || key == SDLK_RETURN)
+		{
+			Element_MULTIPP::Arrow_keys &= ~0x10;
 		}
 
 		if (key == SDLK_d || key == SDLK_a)
@@ -1229,9 +1256,20 @@ void GameController::OpenLocalSaveWindow(bool asCurrent)
 		}
 		else if (gameModel->GetSaveFile())
 		{
+			Json::Value localSaveInfo;
+			localSaveInfo["type"] = "localsave";
+			localSaveInfo["username"] = Client::Ref().GetAuthUser().Username;
+			localSaveInfo["title"] = gameModel->GetSaveFile()->GetName();
+			localSaveInfo["date"] = (Json::Value::UInt64)time(NULL);
+			Client::Ref().SaveAuthorInfo(&localSaveInfo);
+			gameSave->authors = localSaveInfo;
+			
 			gameModel->SetSaveFile(&tempSave);
 			Client::Ref().MakeDirectory(LOCAL_SAVE_DIR);
-			if (Client::Ref().WriteFile(gameSave->Serialise(), gameModel->GetSaveFile()->GetName()))
+			std::vector<char> saveData = gameSave->Serialise();
+			if (saveData.size() == 0)
+				new ErrorMessage("Error", "Unable to serialize game data.");
+			else if (Client::Ref().WriteFile(gameSave->Serialise(), gameModel->GetSaveFile()->GetName()))
 				new ErrorMessage("Error", "Unable to write save file.");
 			else
 				gameModel->SetInfoTip("Saved Successfully");

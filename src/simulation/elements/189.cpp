@@ -65,6 +65,9 @@ int Element_MULTIPP::Arrow_keys = 0; // Note: TPT uses SDL
 //#TPT-Directive ElementHeader Element_MULTIPP static int maxPrior
 int Element_MULTIPP::maxPrior = 0;
 
+// #TPT-Directive ElementHeader Element_MULTIPP static int q1
+// int Element_MULTIPP::q1 = -1; // removed
+
 // #TPT-Directive ElementHeader Element_MULTIPP static float StrengthMultipler
 // float Element_MULTIPP::StrengthMultipler = 1.0f;
 
@@ -405,6 +408,9 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 				}
 				part_phot->vx = (float)((rct >> 4) * arr1[r1]);
 				part_phot->vy = (float)((rct >> 4) * arr2[r1]);
+				break;
+			case 21: // skip movement for one frame
+				part_phot->flags |= FLAG_SKIPMOVE;
 				break;
 		}
 	}

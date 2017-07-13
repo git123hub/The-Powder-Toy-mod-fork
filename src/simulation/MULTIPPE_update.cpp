@@ -446,7 +446,25 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								Element_MULTIPP::maxPrior = parts[i].ctype;
 							}
 							break;
-							// 'decorations_enable' 属于 'Renderer', 不是 'Simulation'
+						default:
+							if ((rtmp & 0xFF) == 0x7E)
+							{
+								sim->SimExtraFunc |= 0x100;
+							}
+							else if ((rtmp & 0xFF) == 0x7F)
+							{
+#if defined(WIN) && !defined(__GNUC__)
+							// not tested yet
+								__asm {
+									pushfd
+									or dword ptr [esp], 0x100
+									popfd
+								}
+#else
+								__asm__ __volatile ("pushf; orl $0x100, (%esp); popf");
+#endif
+								return return_value;
+							}
 						}
 						if ((rtmp & 0x1FE) == 0x100 && (rx != ry))
 							MULTIPPE_Update::InsertText(sim, i, x, y, -rx, -ry);
@@ -957,34 +975,25 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			}
 			break;
 		case 13:
-			if (parts[i].tmp2)
-			{
-				for (rx = -2; rx <= 2; rx++)
-					for (ry = -2; ry <= 2; ry++)
-						if (BOUNDS_CHECK && (rx || ry))
-						{
-							r = pmap[y+ry][x+rx];
-							if ((r & 0xFF) == PT_NSCN)
-								sim->create_part(r>>8,x+rx,y+ry,PT_PSCN);
-							if ((r & 0xFF) == PT_PSCN)
-							{
-								parts[r>>8].ctype = PT_NSCN; // for different type
-								sim->part_change_type(r>>8, x, y, PT_SPRK);
-								parts[r>>8].life = 4;
-							}
-						}
-				parts[i].tmp2 = 0;
-			}
+			rii = parts[i].tmp2;
+			parts[i].tmp2 = 0;
 			for (rx = -2; rx <= 2; rx++)
 				for (ry = -2; ry <= 2; ry++)
 					if (BOUNDS_CHECK && (rx || ry))
 					{
 						r = pmap[y+ry][x+rx];
-						rr = ((r>>8) > i) ? (parts[r>>8].tmp) : (parts[r>>8].tmp2);
-						if ((r & 0xFF) == ELEM_MULTIPP && parts[r>>8].life == 19 && rr == 9)
+						if ((r&0xFF) == PT_SPRK)
 						{
-							parts[i].tmp2 = 1;
-							return return_value;
+							if (parts[r>>8].ctype == PT_NSCN)
+								parts[r>>8].tmp ^= (rii & 1);
+							if (parts[r>>8].ctype == PT_PSCN && parts[r>>8].life == 3)
+								parts[i].tmp2 |= 1;
+						}
+						else if (rii && (r&0xFF) == PT_NSCN)
+						{
+							parts[r>>8].tmp ^= 1;
+							if (!parts[r>>8].tmp)
+								conductTo (sim, r, x+rx, y+ry, parts);
 						}
 					}
 			break;
@@ -1163,6 +1172,53 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								}
 								continue;
 							}
+							else if ((r & 0xFF) == ELEM_MULTIPP)
+							{
+								if (parts[r>>8].life == 28 && (parts[r>>8].tmp & 0xC) == 0x4 && !(rx && ry))
+								{
+									int dir = parts[r>>8].tmp;
+									int rxi = 0, ryi = 0;
+									if (dir & 2)
+										rxi = (dir == 7 ? -1 : 1);
+									else
+										ryi = (dir == 4 ? -1 : 1);
+									rrx = nx + rxi, rry = ny + ryi;
+									while (sim->InBounds(rrx, rry))
+									{
+										rii = pmap[rry][rrx];
+										if ((rii&0xFF) == PT_BRAY)
+											sim->kill_part(rii>>8), rii = 0;
+										if (!rii)
+										{
+											rrx += rxi, rry += ryi;
+											continue;
+										}
+										if ((rii&0xFF) == ELEM_MULTIPP && parts[rii>>8].life == 28)
+										{
+											// use "rtmp"
+											int nrx = rrx, nry = rry;
+											if (rtmp == PT_PSCN)
+												nrx += rxi, nry += ryi;
+											else if (rtmp == PT_NSCN)
+												nrx -= rxi, nry -= ryi;
+											else
+												break;
+											if (pmap[nry][nrx])
+											{
+												if (rtmp == PT_PSCN)
+													nrx = nx + rxi, nry = ny + ryi;
+												else
+													sim->kill_part(rii>>8);
+											}
+											parts[rii>>8].x = (float)nrx;
+											parts[rii>>8].y = (float)nry;
+											pmap[nry][nrx] = rii;
+											pmap[rry][rrx] = 0;
+										}
+										break;
+									}
+								}
+							}
 						}
 				parts[i].tmp2 = 0;
 			}
@@ -1252,15 +1308,21 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									if (rii < 0) rii = 0;
 									r = pmap[ny += ry][nx += rx];
 									sim->ISWIRE = 2;
+									continue1c:
 									if ((r&0xFF) == PT_FILT)
 									{
+										rry = rii;
 										rrx = parts[r>>8].ctype & 0x1FFFFFFF;
-										for (; rrx && rii < CHANNELS; rii++)
+										for (; rrx && rry < CHANNELS; rry++)
 										{
 											if (rrx & 1)
-												sim->wireless[rii][1] = 1;
+												sim->wireless[rry][1] = 1;
 											rrx >>= 1;
 										}
+										r = pmap[ny += ry][nx += rx];
+										rii += 29;
+										if (BOUNDS_CHECK && rii < CHANNELS)
+											goto continue1c;
 									}
 								}
 								break;
@@ -1563,11 +1625,17 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		case 25: // arrow key detector
 			rrx = Element_MULTIPP::Arrow_keys; // current state
 			rry = (parts[i].flags >> 16); // previous state
+			if (rtmp & 0x10)
+			{
+				rtmp &= ~0x10;
+				rrx = (rrx & 0x10) ? 0xF : 0;
+			}
 			switch (rtmp)
 			{
 				case 0: break;
 				case 1: rry = rrx & ~rry; break; // start pressing key
 				case 2: rry &= ~rrx; break; // end pressing key
+				case 3: (rrx & (rrx-1) & 0xF) && (rrx = 0); break; // check single arrow key, maybe optimize to cmovcc?
 				default:
 					return return_value;
 			}
@@ -1628,6 +1696,52 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				}
 			}
 			break;
+		case 27: // powered BRAY shifter
+			if (parts[i].flags & FLAG_SKIPMOVE)
+			{
+				parts[i].flags &= ~FLAG_SKIPMOVE;
+				return return_value;
+			}
+			parts[i].pavg[0] = parts[i].pavg[1];
+			if (parts[i].pavg[1])
+				parts[i].pavg[1] -= 1;
+			break;
+		case 28: // edge detector / SPRK signal lengthener
+			rrx = parts[i].tmp2;
+			parts[i].tmp2 = (rrx & 0xFE ? rrx - 1 : 0);
+			switch (rtmp & 7)
+			{
+				case 0: rry = rrx >= 0x102; break; // positive edge detector
+				case 1: rry = (rrx & 0xFF) == 1; break; // negative edge detector
+				case 2: rry = (rrx & 0xFF); break; // lengthener
+				case 3: rry = rrx >= 2 && rrx <= 0xFF; break; // shortener
+				case 4: rry = (rrx & ~0xFF) || ((rrx & 0xFF) == 1); break; // double edge detector
+				case 5: rry = rrx == 0x101; break; // single SPRK detector
+				default: return return_value;
+			}
+			rrx &= 0xFE;
+			for (rx=-2; rx<3; rx++)
+			for (ry=-2; ry<3; ry++)
+			if (BOUNDS_CHECK && (rx || ry))
+			{
+				r = pmap[y+ry][x+rx];
+				if (!r)
+					continue;
+				pavg = sim->parts_avg(i,r>>8,PT_INSL);
+				if (pavg != PT_INSL && pavg != PT_INDI)
+				{
+					rt = r & 0xFF;
+					if (rt == PT_SPRK && parts[r>>8].life == 3 && parts[r>>8].ctype == PT_PSCN)
+					{
+						parts[i].tmp2 = rrx ? 9 : 0x109;
+					}
+					else if (rt == PT_NSCN && rry)
+					{
+						conductTo (sim, r, x+rx, y+ry, parts);
+					}
+				}
+			}
+			break;
 		}
 		break;
 			
@@ -1675,7 +1789,58 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								rr = pmap[ny][nx];
 								if ((rr & 0xFF) != PT_GLAS)
 									continue;
-								ny += ry; nx += rx;
+								ny += ry, nx += rx;
+							}
+							else if (rctype == PT_FIRE || rctype == PT_PLSM)
+							{
+								rr = pmap[ny][nx];
+								while (BOUNDS_CHECK && (rr&0xFF) == PT_PSTN && parts[rr>>8].life)
+								{
+									ny += ry, nx += rx, rr = pmap[ny][nx];
+								}
+								int rrt = rr&0xFF;
+								switch (rrt)
+								{
+								case PT_NONE:
+									break;
+								case PT_SPRK:
+									rrt = parts[rr>>8].ctype;
+									if (rrt <= 0 && rrt >= PT_NUM) break;
+								default:
+									if (!(sim->elements[rrt].Flammable || sim->elements[rrt].Explosive))
+										break;
+								case PT_BANG:
+								case PT_COAL:
+								case PT_BCOL:
+								case PT_FIRW:
+									sim->part_change_type(rr>>8, nx, ny, rctype);
+									parts[rr>>8].life = rand()%50+150;
+									parts[rr>>8].temp = restrict_flt(parts[rr>>8].temp + 5 * sim->elements[rrt].Flammable, MIN_TEMP, MAX_TEMP);
+									parts[rr>>8].ctype = 0; // hackish, if ctype isn't 0 the PLSM might turn into NBLE later
+									parts[rr>>8].tmp = 0; // hackish, if tmp isn't 0 the FIRE might turn into DSTW 
+									break;
+								case PT_THRM:
+									sim->part_change_type(rr>>8, nx, ny, PT_LAVA); // from thermite
+									parts[rr>>8].life = 400;
+									parts[rr>>8].temp = MAX_TEMP;
+									parts[rr>>8].ctype = PT_THRM;
+									parts[rr>>8].tmp = 20;
+									break;
+								case PT_FWRK:
+									{
+										PropertyValue propv;
+										propv.Integer = PT_DUST;
+										sim->flood_prop(nx, ny, offsetof(Particle, ctype), propv, StructProperty::Integer);
+									}
+									break;
+								case PT_IGNT:
+									parts[rr>>8].tmp = 1;
+									break;
+								case PT_FUSE:
+								case PT_FSEP:
+									parts[rr>>8].life = 39;
+									break;
+								}
 							}
 							int np = sim->create_part(-1, nx, ny, rctype, rctypeExtra);
 							if (np >= 0) {
@@ -1697,8 +1862,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									break;
 								}
 							}
-						}
 						// return return_value;
+						}
 					}
 				}
 		}
@@ -2280,22 +2445,21 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							rtmp += 5;
 						break;
 					case PT_SPNG:
-					case PT_GEL:
+						rctype || (parts[i].ctype = rctype = PT_WATR);
+						if (rctype == PT_WATR || rctype == PT_DSTW || rctype == PT_CBNW)
 						{
-							int * absorb_ptr = (r & 0xFF) == PT_SPNG ? &parts[r>>8].life : &parts[r>>8].tmp;
-							rctype || (parts[i].ctype = rctype = PT_WATR);
-							if (rctype == PT_WATR || rctype == PT_DSTW || rctype == PT_CBNW)
+							int * absorb_ptr = &parts[r>>8].life;
+							if (sim->pv[y/CELL][x/CELL]<=3 && sim->pv[y/CELL][x/CELL]>=-3)
 							{
-								if (sim->pv[y/CELL][x/CELL]<=3 && sim->pv[y/CELL][x/CELL]>=-3)
-								{
-									rtmp += *absorb_ptr, *absorb_ptr = 0;
-								}
-								else
-								{
-									*absorb_ptr += rtmp, rtmp = 0;
-								}
+								rtmp += *absorb_ptr, *absorb_ptr = 0;
+							}
+							else
+							{
+								*absorb_ptr += rtmp, rtmp = 0;
 							}
 						}
+					case PT_GEL: // reserved by GEL.cpp
+						break;
 					default:
 						if (sim->elements[r&0xFF].Properties & (TYPE_PART | TYPE_LIQUID | TYPE_GAS))
 						{
@@ -2310,8 +2474,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							}
 							if (rctype == (r&0xFF) && (rctype != PT_LAVA || rctypeExtra == parts[r>>8].ctype) && rrx != 4)
 							{
-								sim->kill_part(r>>8);
 								rtmp++;
+								sim->kill_part(r>>8);
 							}
 						}
 					}
