@@ -1499,10 +1499,10 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 		case 'a':
 			if (ctrl)
 			{
-				std::string authorString = Client::Ref().GetAuthorString();
-				new InformationMessage("Save authorship info", authorString, true);
-			}
-			break;
+				  std::string authorString = Client::Ref().GetAuthorInfo().toStyledString();
+				  new InformationMessage("Save authorship info", authorString, true);
+		  	}
+		  break;
 #endif
 		case 'r':
 			if (ctrl)

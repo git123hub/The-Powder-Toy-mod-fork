@@ -96,6 +96,16 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 				}
 			}
 			break;
+		case 2:
+			if (parts[i].tmp2)
+				parts[i].tmp2--;
+			else
+			{
+				parts[i].ctype = parts[i].tmp & 0x3FFFFFFF;
+				parts[i].tmp = (unsigned int)(parts[i].tmp) >> 30;
+				sim->part_change_type(i, x, y, PT_PHOT);
+			}
+			return 1; // 1 means no movement
 		}
 		return 0;
 	}
@@ -214,6 +224,10 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 			case PT_VRSG:
 				parts[r>>8].tmp4 = PT_NONE;
 				break;
+			case PT_LAVA:
+				if (parts[r>>8].ctype == PT_POLO && !(rand()&0xFF))
+					parts[r>>8].ctype = PT_POLC;
+				break;
 			default:
 				break;
 			}
@@ -233,17 +247,15 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 					parts[i].ctype = PT_NEUT;
 				}
 */
-				if ((r&0xFF) == PT_PROT)
+				if ((r&0xFF) == PT_PROT && !pmap[y+ry][x+rx])
 				{
-					float velocity1 = powf(parts[i].vx, 2.0f)+powf(parts[i].vy, 2.0f);
-					float velocity2 = powf(parts[r>>8].vx, 2.0f)+powf(parts[r>>8].vy, 2.0f);
-					if (velocity1 + velocity2 > 15.0f && !pmap[y+ry][x+rx])
+					if (parts[r>>8].tmp > 250)
 					{
-						if (!parts[r>>8].life)
-							parts[i].life = 0;
-						else if (parts[i].life)
-							parts[i].life += parts[r>>8].life; // merge this with PROT's life.
-						sim->part_change_type(r>>8, x, y, PT_BOMB);
+						int element = PT_POLC;
+						if (parts[r>>8].tmp > 1000 && (fabsf(parts[r>>8].vx) + fabsf(parts[r>>8].vy)) > 8)
+							element = PT_BOMB;
+						sim->part_change_type(r>>8, x, y, element);
+						return 0;
 					}
 				}
 			}
