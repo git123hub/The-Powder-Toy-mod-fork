@@ -19,12 +19,12 @@ Element_GOLD::Element_GOLD()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 0;
-	PhotonReflectWavelengths = 0x3C038100;
 
 	Flammable = 0;
 	Explosive = 0;
 	Meltable = 1;
 	Hardness = 0;
+	PhotonReflectWavelengths = 0x3C038100;
 
 	Weight = 100;
 

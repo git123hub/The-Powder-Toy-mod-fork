@@ -18,12 +18,12 @@ Element_BCOL::Element_BCOL()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 1;
-	PhotonReflectWavelengths = 0x00000000;
 
 	Flammable = 0;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 2;
+	PhotonReflectWavelengths = 0x00000000;
 
 	Weight = 90;
 

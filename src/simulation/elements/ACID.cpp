@@ -18,12 +18,12 @@ Element_ACID::Element_ACID()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 2;
-	PhotonReflectWavelengths = 0x1FE001FE;
 
 	Flammable = 40;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 0;
+	PhotonReflectWavelengths = 0x1FE001FE;
 
 	Weight = 10;
 

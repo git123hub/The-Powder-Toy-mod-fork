@@ -18,12 +18,12 @@ Element_DUST::Element_DUST()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 1;
-	PhotonReflectWavelengths = 0x3FFFFFC0;
 
 	Flammable = 10;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 30;
+	PhotonReflectWavelengths = 0x3FFFFFC0;
 
 	Weight = 85;
 

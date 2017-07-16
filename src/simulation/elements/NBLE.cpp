@@ -18,12 +18,12 @@ Element_NBLE::Element_NBLE()
 	Diffusion = 0.75f;
 	HotAir = 0.001f	* CFDS;
 	Falldown = 0;
-	PhotonReflectWavelengths = 0x3FFF8000;
-
+	
 	Flammable = 0;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 1;
+	PhotonReflectWavelengths = 0x3FFF8000;
 
 	Weight = 1;
 

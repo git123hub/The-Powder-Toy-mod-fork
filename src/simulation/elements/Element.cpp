@@ -23,6 +23,7 @@ Element::Element():
 	Explosive(0),
 	Meltable(0),
 	Hardness(30),
+	PhotonReflectWavelengths(0x3FFFFFFF),
 
 	Weight(50),
 
@@ -41,7 +42,6 @@ Element::Element():
 	LowTemperatureTransition(NT),
 	HighTemperature(ITH),
 	HighTemperatureTransition(NT),
-	PhotonReflectWavelengths(0xFFFFFFFF),
 
 	Update(NULL),
 	Graphics(&Element::defaultGraphics),
@@ -70,6 +70,7 @@ std::vector<StructProperty> Element::GetProperties()
 	properties.push_back(StructProperty("Explosive",					StructProperty::Integer,	offsetof(Element, Explosive)));
 	properties.push_back(StructProperty("Meltable",						StructProperty::Integer,	offsetof(Element, Meltable)));
 	properties.push_back(StructProperty("Hardness",						StructProperty::Integer,	offsetof(Element, Hardness)));
+	properties.push_back(StructProperty("PhotonReflectWavelengths",		StructProperty::UInteger,	offsetof(Element, PhotonReflectWavelengths)));
 	properties.push_back(StructProperty("Weight",						StructProperty::Integer,	offsetof(Element, Weight)));
 	properties.push_back(StructProperty("Temperature",					StructProperty::Float,		offsetof(Element, Temperature)));
 	properties.push_back(StructProperty("HeatConduct",					StructProperty::UChar,		offsetof(Element, HeatConduct)));
@@ -85,7 +86,6 @@ std::vector<StructProperty> Element::GetProperties()
 	properties.push_back(StructProperty("LowTemperatureTransition",		StructProperty::Integer,	offsetof(Element, LowTemperatureTransition)));
 	properties.push_back(StructProperty("HighTemperature",				StructProperty::Float,		offsetof(Element, HighTemperature)));
 	properties.push_back(StructProperty("HighTemperatureTransition",	StructProperty::Integer,	offsetof(Element, HighTemperatureTransition)));
-	properties.push_back(StructProperty("PhotonReflectWavelengths",		StructProperty::Integer,	offsetof(Element, PhotonReflectWavelengths)));
 	return properties;
 }
 

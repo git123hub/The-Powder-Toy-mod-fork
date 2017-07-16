@@ -18,12 +18,12 @@ Element_SPRK::Element_SPRK()
 	Diffusion = 0.00f;
 	HotAir = 0.001f	* CFDS;
 	Falldown = 0;
-	PhotonReflectWavelengths = 0x00000000;
 
 	Flammable = 0;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 1;
+	PhotonReflectWavelengths = 0x00000000;
 
 	Weight = 100;
 

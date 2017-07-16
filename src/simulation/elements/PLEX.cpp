@@ -18,12 +18,12 @@ Element_PLEX::Element_PLEX()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 0;
-	PhotonReflectWavelengths = 0x1F00003E;
 
 	Flammable = 1000;
 	Explosive = 2;
 	Meltable = 50;
 	Hardness = 1;
+	PhotonReflectWavelengths = 0x1F00003E;
 
 	Weight = 100;
 

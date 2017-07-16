@@ -18,12 +18,12 @@ Element_NITR::Element_NITR()
 	Diffusion = 0.00f;
 	HotAir = 0.000f	* CFDS;
 	Falldown = 2;
-	PhotonReflectWavelengths = 0x0007C000;
 
 	Flammable = 1000;
 	Explosive = 2;
 	Meltable = 0;
 	Hardness = 3;
+	PhotonReflectWavelengths = 0x0007C000;
 
 	Weight = 23;
 

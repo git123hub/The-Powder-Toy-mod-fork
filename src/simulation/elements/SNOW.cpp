@@ -18,12 +18,12 @@ Element_SNOW::Element_SNOW()
 	Diffusion = 0.01f;
 	HotAir = -0.00005f* CFDS;
 	Falldown = 1;
-	PhotonReflectWavelengths = 0x03FFFFFF;
 
 	Flammable = 0;
 	Explosive = 0;
 	Meltable = 0;
 	Hardness = 20;
+	PhotonReflectWavelengths = 0x03FFFFFF;
 
 	Weight = 50;
 
