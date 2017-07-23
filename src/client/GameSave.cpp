@@ -685,6 +685,7 @@ void GameSave::readOPS(char * data, int dataLength)
 				fprintf(stderr, "Wrong type for %s\n", bson_iterator_key(&iter));
 			}
 		}
+#ifndef RENDERER
 		else if (!strcmp(bson_iterator_key(&iter), "authors"))
 		{
 			if (bson_iterator_type(&iter) == BSON_OBJECT)
@@ -699,6 +700,7 @@ void GameSave::readOPS(char * data, int dataLength)
 				fprintf(stderr, "Wrong type for %s\n", bson_iterator_key(&iter));
 			}
 		}
+#endif
 	}
 
 	isFromMyMod |= (my_mod_id_2 == MOD_ID_2 || my_mod_id_2 == PARENT_MOD_ID_2);
@@ -2354,7 +2356,6 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 				{
 					RESTRICTVERSION(91, 5);
 				}
-#ifdef SNAPSHOT
 				if (particles[i].type == PT_HEAC || particles[i].type == PT_SAWD || particles[i].type == PT_POLO
 					|| particles[i].type == PT_RFRG || particles[i].type == PT_RFGL || particles[i].type == PT_LSNS
 #ifdef MOD_ID_2
@@ -2370,7 +2371,6 @@ char * GameSave::serialiseOPS(unsigned int & dataLength)
 					RESTRICTVERSION(92, 0);
 					fromNewerVersion = true;
 				}
-#endif
 
 				//Get the pmap entry for the next particle in the same position
 				i = partsPosLink[i];
@@ -2615,7 +2615,7 @@ std::set<int> GetNestedSaveIDs(Json::Value j)
 	for (Json::Value::Members::iterator iter = members.begin(), end = members.end(); iter != end; ++iter)
 	{
 		std::string member = *iter;
-		if (member == "id")
+		if (member == "id" && j[member].isInt())
 			saveIDs.insert(j[member].asInt());
 		else if (j[member].isArray())
 		{

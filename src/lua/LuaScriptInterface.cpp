@@ -53,6 +53,8 @@ extern "C"
 }
 #include "socket/socket.lua.h"
 
+// #include "gui/game/Notification.h" // already in GameModel.h
+
 GameModel * luacon_model;
 GameController * luacon_controller;
 Simulation * luacon_sim;
@@ -460,6 +462,7 @@ void LuaScriptInterface::initInterfaceAPI()
 		{"closeWindow", interface_closeWindow},
 		{"addComponent", interface_addComponent},
 		{"removeComponent", interface_removeComponent},
+		{"addNotification", interface_addNotification},
 		{NULL, NULL}
 	};
 	luaL_register(l, "interface", interfaceAPIMethods);
@@ -537,6 +540,34 @@ int LuaScriptInterface::interface_closeWindow(lua_State * l)
 	LuaWindow * window = Luna<LuaWindow>::check(l, 1);
 	if (window)
 		window->GetWindow()->CloseActiveWindow();
+	return 0;
+}
+
+int LuaScriptInterface::interface_addNotification(lua_State * l)
+{
+	class LuaNotification : public Notification
+	{
+		lua_State * ls0;
+		int ref0;
+	public:
+		LuaNotification(lua_State *ls_, int ref_, std::string message) : Notification(message), ls0(ls_), ref0(ref_) {}
+		virtual ~LuaNotification() {
+			luaL_unref(ls0, LUA_REGISTRYINDEX, ref0);
+		}
+
+		virtual void Action()
+		{
+			lua_rawgeti(ls0, LUA_REGISTRYINDEX, ref0);
+			lua_pcall(ls0, 0, 0, 0);
+		}
+	};
+	luaL_checktype(l, 1, LUA_TSTRING);
+	luaL_checktype(l, 2, LUA_TFUNCTION);
+
+	lua_pushvalue(l, 2); // copy 2nd argument
+	int fn = luaL_ref(l, LUA_REGISTRYINDEX);
+
+	luacon_model->AddNotification(new LuaNotification(l, fn, std::string(lua_tostring(l, 1))));
 	return 0;
 }
 
@@ -625,7 +656,11 @@ int LuaScriptInterface::simulation_signNewIndex(lua_State *l)
 	if (!key.compare("text"))
 	{
 		const char *temp = luaL_checkstring(l, 3);
-		luacon_sim->signs[id].text = format::CleanString(temp, false, true, true).substr(0, 45);
+		std::string cleaned = format::CleanString(temp, false, true, true).substr(0, 45);
+		if (!cleaned.empty())
+			luacon_sim->signs[id].text = cleaned;
+		else
+			luaL_error(l, "Text is empty");
 		return 0;
 	}
 	else if (!key.compare("justification"))
@@ -662,7 +697,7 @@ int LuaScriptInterface::simulation_signNewIndex(lua_State *l)
 	return 0;
 }
 
-//creates a new sign at the first open index
+// Creates a new sign at the first open index
 int LuaScriptInterface::simulation_newsign(lua_State *l)
 {
 	if (luacon_sim->signs.size() >= MAXSIGNS)
@@ -684,6 +719,17 @@ int LuaScriptInterface::simulation_newsign(lua_State *l)
 	lua_pushnumber(l, luacon_sim->signs.size());
 	return 1;
 }
+
+// Deletes a sign
+int simulation_deletesign(lua_State *l)
+{
+	int signID = luaL_checkinteger(l, 1);
+	if (signID <= 0 || signID > (int)luacon_sim->signs.size())
+		return luaL_error(l, "Sign doesn't exist");
+
+	luacon_sim->signs.erase(luacon_sim->signs.begin()+signID-1);
+ 	return 1;
+ }
 
 //// Begin Simulation API
 
@@ -763,6 +809,7 @@ void LuaScriptInterface::initSimulationAPI()
 		{"setCustomGOLRule", simulation_setCustomGOLRule},
 		{"getGOLRule", simulation_getGOLRule},
 		{"setCustomGOLGrad", simulation_setCustomGOLGrad},
+		{"partKillDestroyable", simulation_partKillDestroyable},
 		{NULL, NULL}
 	};
 	luaL_register(l, "simulation", simulationAPIMethods);
@@ -828,6 +875,8 @@ void LuaScriptInterface::initSimulationAPI()
 	}
 	lua_pushcfunction(l, simulation_newsign);
 	lua_setfield(l, -2, "new");
+	lua_pushcfunction(l, simulation_deletesign);
+	lua_setfield(l, -2, "delete");
 	lua_setfield(l, -2, "signs");
 }
 
@@ -1217,6 +1266,22 @@ int LuaScriptInterface::simulation_partKill(lua_State * l)
 		if (i>=0 && i<NPART)
 			luacon_sim->kill_part(i);
 	}
+	return 0;
+}
+
+int LuaScriptInterface::simulation_partKillDestroyable(lua_State * l)
+{
+	int i = lua_tointeger(l, 1);
+	if (lua_gettop(l) == 2)
+	{
+		int y = lua_tointeger(l, 2);
+		if (i<0 || i>=XRES || y<0 || y>=YRES)
+			return luaL_error(l, "coordinates out of range (%d,%d)", i, y);
+		i = luacon_sim->pmap[y][i]>>8;
+		if (!i) return 0; // luaL_error(l, "Dead particle");
+	}
+	if (i>=0 && i<NPART && !(luacon_sim->elements[luacon_sim->parts[i].type].Properties2 & PROP_NODESTRUCT))
+		luacon_sim->kill_part(i);
 	return 0;
 }
 

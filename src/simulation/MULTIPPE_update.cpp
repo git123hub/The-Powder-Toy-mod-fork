@@ -185,9 +185,9 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 	case 17: // reserved for 186.cpp and Simulation.cpp
 	case 18: // decoration only, no update function
 	case 22: // reserved for Simulation.cpp
-	case 23: // reserved for stickmans
+	case 23: // reserved for stickmen
 	case 25: // reserved for E189's life = 16, ctype = 10.
-	case 27: // reserved for stickmans
+	case 27: // reserved for stickmen
 	case 32: // reserved for ARAY / BRAY
 		return return_value;
 	case 6: // heater
@@ -444,6 +444,60 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								sim->SimExtraFunc |= 0x80;
 								sim->SimExtraFunc &= ~0x01;
 								Element_MULTIPP::maxPrior = parts[i].ctype;
+							}
+							break;
+						case 13: // heal/harm stickmen lifes
+							{
+								int lifeincx = parts[i].ctype;
+								rctype = parts[r>>8].ctype;
+								if (rctype == PT_INST)
+								{
+									parts[sim->player.self_ID].life = 0;
+									parts[sim->player2.self_ID].life = 0;
+								}
+								else if (rctype == PT_NSCN)
+									lifeincx = -lifeincx;
+								if (parts[sim->player.self_ID].type == PT_STKM)
+									parts[sim->player.self_ID].life += lifeincx;
+								if (parts[sim->player2.self_ID].type == PT_STKM2)
+									parts[sim->player2.self_ID].life += lifeincx;
+							}
+							break;
+						case 14: // set stickman's element power
+							rctype = parts[r>>8].ctype;
+							rii = parts[i].ctype;
+							if (rctype == PT_METL || rctype == PT_INWR)
+							{
+								if (sim->player2.spwn)
+								{
+									if (sim->player.spwn)
+									{
+										rrx = (sim->player2.rocketBoots ? 4 : 0) + (sim->player.rocketBoots ? 2 : 0);
+										sim->player.rocketBoots  = (rii >> (rrx++)) & 1;
+									}
+									else
+										rrx = (sim->player2.rocketBoots ? 11 : 10);
+									sim->player2.rocketBoots = (rii >> rrx) & 1;
+								}
+								else if (sim->player.spwn)
+								{
+									sim->player.rocketBoots = (rii >> (sim->player.rocketBoots ? 9 : 8)) & 1;
+								}
+							}
+							else
+							{
+								if (!rii)
+								{
+									rrx = pmap[y-ry][x-rx];
+									if ((rrx&0xFF) == PT_CRAY)
+										rii = parts[rrx>>8].ctype;
+								}
+								if (rctype == PT_PSCN || rctype == PT_INST)
+									Element_STKM::STKM_set_element(sim, &sim->player, rii),
+									sim->player.__flags |= 2;
+								if (rctype == PT_NSCN || rctype == PT_INST)
+									Element_STKM::STKM_set_element(sim, &sim->player2, rii),
+									sim->player2.__flags |= 2;
 							}
 							break;
 						default:
@@ -732,17 +786,20 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			}
 			break;
 		case 5:
-			for (rx = -1; rx < 2; rx++)
-				for (ry = -1; ry < 2; ry++)
-					if (BOUNDS_CHECK && (rx || ry))
-					{
-						r = pmap[y+ry][x+rx];
-						if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
+			if (parts[i].tmp2 < 2)
+			{
+				for (rx = -1; rx < 2; rx++)
+					for (ry = -1; ry < 2; ry++)
+						if (BOUNDS_CHECK && (rx || ry))
 						{
-							parts[i].tmp2 = 10;
-							goto break2b;
+							r = pmap[y+ry][x+rx];
+							if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3 || !(rx && ry) && sim->emap[(y+ry)/CELL][(x+rx)/CELL] == 15)
+							{
+								parts[i].tmp2 = 10;
+								goto break2b;
+							}
 						}
-					}
+			}
 			// break;
 		break2b:
 			if (parts[i].tmp2)
@@ -1636,6 +1693,10 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				case 1: rry = rrx & ~rry; break; // start pressing key
 				case 2: rry &= ~rrx; break; // end pressing key
 				case 3: (rrx & (rrx-1) & 0xF) && (rrx = 0); break; // check single arrow key, maybe optimize to cmovcc?
+				case 4: rrx &= (rrx >> 2) & 3; rrx |= (rrx << 2); break;
+				case 5: case 6:
+					rrx &= 0xF; rrx |= (rrx << 4); rrx &= (rrx >> (rtmp == 5 ? 1 : 3));
+				break;
 				default:
 					return return_value;
 			}

@@ -106,6 +106,36 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 				sim->part_change_type(i, x, y, PT_PHOT);
 			}
 			return 1; // 1 means no movement
+		case 3:
+			{
+				int k1 = parts[i].tmp;
+				int k2 = parts[i].tmp2 & 3;
+				int k3, k4;
+				while (k2)
+				{
+					k4 = k2 & -k2, k2 &= ~k4;
+					k3 = (k4 == 1 ? 1 : -1);
+					s = sim->create_part(-1, x, y, PT_PHOT);
+					if (s >= 0)
+					{
+						parts[s].vx =  k3*parts[i].vy;
+						parts[s].vy = -k3*parts[i].vx;
+						parts[s].temp = parts[i].temp;
+						parts[s].life = parts[i].life;
+						parts[s].ctype = k1;
+						if (s > i)
+							parts[s].flags |= FLAG_SKIPMOVE;
+					}
+				}
+				if ((r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 10)
+				{
+					sim->part_change_type(i, x, y, PT_PHOT);
+					parts[i].ctype = k1;
+					parts[i].tmp = 0;
+					return 1;
+				}
+			}
+			break;
 		}
 		return 0;
 	}
@@ -134,33 +164,6 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 			int slife;
 			switch (r&0xFF)
 			{
-			case PT_PLSM:
-				if (!(rand()%30))
-				{
-					s = sim->create_part(r>>8, x, y, PT_PLSM);
-					if (s >= 0)
-						parts[s].ctype = PT_NBLE;
-				}
-				break;
-			case PT_CO2:
-				if (!(rand()%10))
-				{
-					parts[r>>8].temp = MAX_TEMP;
-					sim->pv[y/CELL][x/CELL] += 256.0f;
-				}
-				break;
-			case PT_O2:
-				if (!(rand()%20))
-				{
-					sim->create_part(r>>8, x, y, PT_PLSM);
-					s = sim->create_part(-3, x, y, PT_E186);
-					slife = parts[i].life;
-					if (slife)
-						parts[s].life = slife + 30;
-					else
-						parts[s].life = 0;
-				}
-				break;
 			case PT_CAUS:
 				sim->part_change_type(r>>8, x, y, PT_RFRG); // probably inverse for NEUT???
 				parts[r>>8].tmp = * (int*) &(sim->pv[y/CELL][x/CELL]); // floating point hacking
@@ -172,20 +175,10 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 			case PT_EXOT:
 				if (!(rand()%3))
 				{
-					if (rand()&1)
-					{
-						if (rand()%100)
-							sim->part_change_type(r>>8, x, y, PT_ISOZ);
-						else
-							sim->part_change_type(r>>8, x, y, PT_E187);
-					}
-					else
-					{
-						sim->part_change_type(r>>8, x, y, PT_WARP);
-						parts[r>>8].life = 1000;
-						parts[r>>8].tmp2 = 10000;
-					}
-					parts[r>>8].temp += 300;
+					sim->part_change_type(r>>8, x, y, PT_WARP);
+					parts[r>>8].life = 1000;
+					parts[r>>8].tmp2 = 10000;
+					parts[r>>8].temp = parts[i].temp = MAX_TEMP;
 				}
 				break;
 			case PT_ISOZ:
@@ -214,10 +207,8 @@ int Element_E186::update(UPDATE_FUNC_ARGS)
 				}
 				break;
 			case PT_INVIS:
-				parts[i].ctype = PT_NEUT;
-			case PT_SPNG:
-				sim->part_change_type(r>>8, x, y, PT_GEL);
-				parts[r>>8].tmp = parts[r>>8].life;
+				if (!parts[r>>8].tmp2)
+					parts[i].ctype = PT_NEUT;
 				break;
 			case PT_VIRS:
 			case PT_VRSS:
