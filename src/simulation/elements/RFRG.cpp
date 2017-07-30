@@ -28,9 +28,10 @@ Element_RFRG::Element_RFRG()
 
 	Temperature = R_TEMP + 273.15f;
 	HeatConduct = 3;
-	Description = "Refrigerant. Heats up and liquifies under pressure.";
+	Description = "Refrigerant. Heats up and liquefies under pressure.";
 
 	Properties = TYPE_GAS|PROP_DEADLY;
+	Properties2 |= PROP_DEBUG_HIDE_TMP;
 
 	LowPressure = IPL;
 	LowPressureTransition = NT;
@@ -49,6 +50,11 @@ int Element_RFRG::update(UPDATE_FUNC_ARGS)
 {
 	float new_pressure = sim->pv[y/CELL][x/CELL];
 	float *old_pressure = (float *)&parts[i].tmp;
+	if (std::isnan(*old_pressure))
+	{
+		*old_pressure = new_pressure;
+		return 0;
+	}
 	
 	// * 0 bar seems to be pressure value -256 in TPT, see Air.cpp. Also, 1 bar seems to be pressure value 0.
 	//   With those two values we can set up our pressure scale which states that ... the highest pressure
