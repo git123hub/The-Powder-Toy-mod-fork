@@ -1,6 +1,7 @@
 #include "simulation/Elements.h"
 #include "simulation/Air.h"
 #include "simulation/MULTIPPE_Update.h"
+#include "SDLCompat.h" // SDL_Delay in SDL.h? 
 
 #ifdef LUACONSOLE
 #include "lua/LuaScriptInterface.h"
@@ -499,6 +500,10 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									Element_STKM::STKM_set_element(sim, &sim->player2, rii),
 									sim->player2.__flags |= 2;
 							}
+							break;
+						case 15:
+							SDL_Delay(parts[i].ctype);
+							*(Element_MULTIPP::EngineFrameStart) += parts[i].ctype;
 							break;
 						default:
 							if ((rtmp & 0xFF) == 0x7E)
@@ -1460,8 +1465,25 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						if (BOUNDS_CHECK && (rx || ry))
 						{
 							r = pmap[y+ry][x+rx];
+							if (!r) continue;
 							if (sim->elements[r&0xFF].Properties & PROP_CONDUCTS)
 								conductTo (sim, r, x+rx, y+ry, parts);
+							else if ((r&0xFF) == PT_CRMC)
+							{
+								rr = pmap[y+2*ry][x+2*rx];
+								if (sim->elements[rr&0xFF].Properties & PROP_CONDUCTS)
+								{
+									parts[rr>>8].ctype = rr & 0xFF;
+									sim->part_change_type(rr>>8, x+2*rx, y+2*ry, PT_SPRK);
+									parts[rr>>8].life = parts[r>>8].tmp2;
+								}
+							}
+							else if ((r&0xFF) == PT_WIRE)
+							{
+								parts[r>>8].ctype = 1;
+								if ((r>>8) > i)
+									parts[r>>8].flags |= FLAG_SKIPMOVE;
+							}
 						}
 				parts[i].tmp2 = parts[i].tmp - 1;
 			}
@@ -2358,11 +2380,12 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					r = pmap[y+ry][x+rx];
 					if ((r & 0xFF) == PT_SPRK && parts[r>>8].life == 3)
 					{
+						rii = (rtmp & 1) ? PROP_DEBUG_HIDE_TMP : PROP_DEBUG_USE_TMP2;
 						switch (parts[r>>8].ctype)
 						{
-							case PT_PSCN: sim->elements[rctype].Properties2 |=  PROP_DEBUG_USE_TMP2; break;
-							case PT_NSCN: sim->elements[rctype].Properties2 &= ~PROP_DEBUG_USE_TMP2; break;
-							case PT_INWR: sim->elements[rctype].Properties2 ^=  PROP_DEBUG_USE_TMP2; break;
+							case PT_PSCN: sim->elements[rctype].Properties2 |=  rii; break;
+							case PT_NSCN: sim->elements[rctype].Properties2 &= ~rii; break;
+							case PT_INWR: sim->elements[rctype].Properties2 ^=  rii; break;
 						}
 						return return_value;
 					}

@@ -65,6 +65,9 @@ int Element_MULTIPP::Arrow_keys = 0; // Note: TPT uses SDL
 //#TPT-Directive ElementHeader Element_MULTIPP static int maxPrior
 int Element_MULTIPP::maxPrior = 0;
 
+//#TPT-Directive ElementHeader Element_MULTIPP static int * EngineFrameStart
+int * Element_MULTIPP::EngineFrameStart = NULL;
+
 // #TPT-Directive ElementHeader Element_MULTIPP static int q1
 // int Element_MULTIPP::q1 = -1; // removed
 
@@ -421,6 +424,16 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 				part_phot->tmp = part_phot->ctype;
 				part_phot->tmp2 = rct;
 				part_phot->ctype = 0x103;
+				sim->part_change_type(i, x, y, PT_E186);
+				break;
+			case 23:
+				if (rct <= 0)
+					part_phot->tmp = * (int*) &(part_other->temp);
+				else if (rct & 1)
+					part_phot->tmp = * (int*) &(part_phot->temp);
+				else
+					part_phot->tmp = part_other->tmp3;
+				part_phot->ctype = 0x104;
 				sim->part_change_type(i, x, y, PT_E186);
 				break;
 		}

@@ -203,22 +203,41 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										}
 										goto break1a;
 									case 27:
-										bool bef1 = (r > i) && !(parts[r].flags & FLAG_SKIPMOVE);
-										if (destroy)
 										{
-											if (bef1)
+											bool bef1 = (r > i) && !(parts[r].flags & FLAG_SKIPMOVE);
+											if (destroy)
 											{
-												parts[r].pavg[0] = parts[r].pavg[1];
-												parts[r].flags |= FLAG_SKIPMOVE;
+												if (bef1)
+												{
+													parts[r].pavg[0] = parts[r].pavg[1];
+													parts[r].flags |= FLAG_SKIPMOVE;
+												}
+												parts[r].pavg[1] = parts[i].tmp;
 											}
-											parts[r].pavg[1] = parts[i].tmp;
-										}
-										else if (parts[r].pavg[bef1 ? 1 : 0])
-										{
-											nyy += parts[r].tmp * nxi;
-											nxx -= parts[r].tmp * nyi;
+											else if (parts[r].pavg[bef1 ? 1 : 0])
+											{
+												nyy += parts[r].tmp * nxi;
+												nxx -= parts[r].tmp * nyi;
+											}
 										}
 										continue;
+									case 29: // Destroying FILT
+										{
+											int vtmp = parts[r].tmp + 2;
+											int rem1 = parts[r].tmp2;
+											int front1;
+											nyy += vtmp * nyi; nxx += vtmp * nxi;
+											while (sim->InBounds(x+nxx, y+nyy))
+											{
+												front1 = pmap[y+nyy][x+nxx];
+												if ((front1&0xFF) == PT_FILT)
+													sim->kill_part(front1>>8);
+												else if (!rem1) break;
+												if (rem1 && !--rem1) break;
+												nyy += nyi, nxx += nxi;
+											}
+										}
+										goto break1a;
 									}
 									docontinue = nostop;
 									continue;
@@ -438,6 +457,11 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 												parts[front1>>8].life = 8;
 											goto break1a;
 										}
+										break;
+									case 8:
+										if (max_turn-- <= 0)
+											goto break1a;
+										nxx += tmp[0]*nxi, nyy += tmp[0]*nyi;
 										break;
 									}
 									tmpz = 1;

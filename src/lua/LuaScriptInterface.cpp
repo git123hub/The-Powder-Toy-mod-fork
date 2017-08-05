@@ -1869,17 +1869,19 @@ int LuaScriptInterface::simulation_saveStamp(lua_State * l)
 	int y = luaL_optint(l,2,0);
 	int w = luaL_optint(l,3,XRES-1);
 	int h = luaL_optint(l,4,YRES-1);
-	std::string name = luacon_controller->StampRegion(ui::Point(x, y), ui::Point(x+w, y+h));
+	int includePressure = luaL_optint(l,5,1);
+	std::string name = luacon_controller->StampRegion(ui::Point(x, y), ui::Point(x+w, y+h), includePressure);
 	lua_pushstring(l, name.c_str());
 	return 1;
 }
 
 int LuaScriptInterface::simulation_loadStamp(lua_State * l)
 {
-	int i = -1, x, y;
+	int i = -1;
 	SaveFile * tempfile = NULL;
-	x = luaL_optint(l,2,0);
-	y = luaL_optint(l,3,0);
+	int x = luaL_optint(l,2,0);
+	int y = luaL_optint(l,3,0);
+	int includePressure = luaL_optint(l,4,1);
 	if (lua_isstring(l, 1)) //Load from 10 char name, or full filename
 	{
 		const char * filename = luaL_optstring(l, 1, "");
@@ -1896,7 +1898,7 @@ int LuaScriptInterface::simulation_loadStamp(lua_State * l)
 
 	if (tempfile)
 	{
-		if (!luacon_sim->Load(x, y, tempfile->GetGameSave()))
+		if (!luacon_sim->Load(x, y, tempfile->GetGameSave(), includePressure))
 		{
 			//luacon_sim->sys_pause = (tempfile->GetGameSave()->paused | luacon_model->GetPaused())?1:0;
 			lua_pushinteger(l, 1);
@@ -2920,6 +2922,7 @@ void LuaScriptInterface::initElementsAPI()
 	SETCONST(l, PROP_CTYPE_WAVEL);
 	SETCONST(l, PROP_CTYPE_SPEC);
 	SETCONST(l, PROP_ENERGY_PART);
+	SETCONST(l, PROP_DEBUG_HIDE_TMP);
 	SETCONST(l, PROP_NODESTRUCT);
 	SETCONST(l, PROP_CLONE);
 	// SETCONST(l, PROP_DRAWONCTYPE);
@@ -3861,7 +3864,7 @@ void LuaScriptInterface::initPlatformAPI()
 		{"exeName", platform_exeName},
 		{"restart", platform_restart},
 		{"openLink", platform_openLink},
-		{"openMyTool", platform_openMyTool},
+		// {"openMyTool", platform_openMyTool},
 		{"clipboardCopy", platform_clipboardCopy},
 		{"clipboardPaste", platform_clipboardPaste},
 		{NULL, NULL}
@@ -3914,6 +3917,16 @@ int LuaScriptInterface::platform_openLink(lua_State * l)
 	return 0;
 }
 
+/**********************************************************\
+*      A L L O W S   G I T 1 2 3 H U B   A C C O U N T     *
+*      Oops, I try to visiting my GitHub Pages, says:      *
+*    "Error: 404 There isn't a GitHub Pages site here."    *
+*  When to do fixing flagged "git123hub" account problem?  *
+*    Contact GitHub support: https://github.com/contact    *
+*     Note: I Can't go against GitHub Terms of Service.    *
+\**********************************************************/
+
+/*
 int LuaScriptInterface::platform_openMyTool(lua_State * l)
 {
 	int args = lua_gettop(l);
@@ -3938,6 +3951,7 @@ int LuaScriptInterface::platform_openMyTool(lua_State * l)
 	Platform::OpenURI((uri_str_head + uri_str));
 	return 0;
 }
+*/
 
 int LuaScriptInterface::platform_clipboardCopy(lua_State * l)
 {
