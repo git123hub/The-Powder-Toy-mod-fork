@@ -23,6 +23,8 @@
 
 #include "gui/interface/Engine.h"
 
+#include "simplugin.h"
+
 #ifdef LUACONSOLE
 #include "lua/LuaScriptInterface.h"
 #include "lua/LuaScriptHelper.h"
@@ -395,7 +397,7 @@ void Simulation::Restore(const Snapshot & snap)
 		parts[i].type = 0;
 	std::copy(snap.Particles.begin(), snap.Particles.end(), parts);
 	parts_lastActiveIndex = NPART-1;
-	RecalcFreeParticles();
+	RecalcFreeParticles(false);
 	std::copy(snap.PortalParticles.begin(), snap.PortalParticles.end(), &portalp[0][0][0]);
 	std::copy(snap.WirelessData.begin(), snap.WirelessData.end(), &wireless[0][0]);
 	std::copy(snap.Wireless2Data.begin(), snap.Wireless2Data.end(), &wireless2[0][0]);
@@ -2030,6 +2032,7 @@ void Simulation::clear_sim(void)
 	emp_trigger_count = 0;
 	emp2_trigger_count = 0;
 	SimExtraFunc = 0;
+	extraDelay = 0;
 	Extra_FIGH_pause = 0;
 	breakable_wall_count = 0;
 	signs.clear();
@@ -2249,10 +2252,11 @@ void Simulation::init_can_move()
 	can_move[PT_TRON][PT_SWCH] = 3;
 	
 	can_move[PT_ELEC][PT_POLC] = 2;
-	can_move[PT_POLC][PT_YEST] = 0; // moving type = "POLC", type at destination = yeast
 	can_move[PT_GLOW][PT_E187] = 0;
 	
 	// can_move[PT_E186][PT_BRMT] = 3;
+	can_move[PT_E186][PT_VIBR] = 2;
+	can_move[PT_E186][PT_BVBR] = 2;
 	
 	can_move[PT_PROT][ELEM_MULTIPP] = 3;
 	can_move[PT_GRVT][ELEM_MULTIPP] = 3;
@@ -2376,7 +2380,7 @@ int Simulation::eval_move(int pt, int nx, int ny, unsigned *rr)
 				switch (pt)
 				{
 				case PT_E186:
-					if (rlife == 5 || rlife == 10)
+					if (rlife == 5 || rlife == 10 || rlife == 16)
 						return 2; // corrected code
 					if (rlife == 17 || rlife == 34)
 						return 1;
@@ -3313,6 +3317,11 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 						parts[E189ID].ctype |= v << 8;
 					return retcode;
 				}
+				else if (parts[E189ID].life == 10 && t == PT_BIZR)
+				{
+					SimExtraFunc |= 0x400;
+					return -1;
+				}
 			}
 			if (drawOn == t)
 				return -1;
@@ -3707,6 +3716,10 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 		parts[i].life = v;
 		break;
 	}
+	case 194: // REP
+		parts[i].life = 10;
+		parts[i].tmp = 5;
+		break;
 	default:
 		break;
 	}
@@ -4470,7 +4483,7 @@ void Simulation::UpdateParticles(int start, int end)
 					else s = 0;
 				}
 				else s = 0;
-			} else if (elements[t].LowPressureTransition>-1 && pv[y/CELL][x/CELL]<elements[t].LowPressure && gravtot<(elements[t].LowPressure/4.0f)) {
+			} else if (elements[t].LowPressureTransition>-1 && pv[y/CELL][x/CELL]<elements[t].LowPressure && gravtot<=(elements[t].LowPressure/4.0f)) {
 				// particle type change due to low pressure
 				if (elements[t].LowPressureTransition!=PT_NUM)
 					t = elements[t].LowPressureTransition;
@@ -5541,12 +5554,15 @@ void Simulation::SimulateLLoops()
 	//memset(gol2, 0, sizeof(gol2));
 }
 
-void Simulation::RecalcFreeParticles()
+void Simulation::RecalcFreeParticles(bool do_life_dec)
 {
 	int x, y, t;
 	int lastPartUsed = 0;
 	int lastPartUnused = -1;
 	int * pmapp1, * pmapp2; // maybe wild pointers?
+	bool actual_life_dec = (
+		do_life_dec && (!sys_pause && !(SimExtraFunc & 2) || framerender)
+	);
 
 	memset(pmap, 0, sizeof(pmap));
 	memset(pmap_count, 0, sizeof(pmap_count));
@@ -5605,7 +5621,7 @@ void Simulation::RecalcFreeParticles()
 			NUM_PARTS ++;
 
 			//decrease particle life
-			if (!sys_pause && !(SimExtraFunc & 2) || framerender)
+			if (actual_life_dec)
 			{
 				if (t<0 || t>=PT_NUM || !elements[t].Enabled)
 				{
@@ -5771,7 +5787,7 @@ void Simulation::BeforeSim()
 	sandcolour = (int)(20.0f*sin((float)sandcolour_frame*(M_PI/180.0f)));
 	sandcolour_frame = (sandcolour_frame+1)%360;
 
-	RecalcFreeParticles();
+	RecalcFreeParticles(true);
 
 	if (!sys_pause && !(SimExtraFunc & 2) || framerender)
 	{
@@ -6015,7 +6031,15 @@ void Simulation::AfterSim()
 			Element_PHOT::ignite_flammable = !Element_PHOT::ignite_flammable;
 		if (SimExtraFunc & 0x0100)
 			ui::Engine::Ref().Exit(); // fast exit?
-		SimExtraFunc &= ~0x000001F5;
+		if (SimExtraFunc & 0x0200)
+		{
+			clear_sim(); emp_decor = 40;
+		}
+		if (SimExtraFunc & 0x0800)
+		{
+			DelayOperation1(this, extraDelay);
+		}
+		SimExtraFunc &= ~0x00000BF5;
 		Element_MULTIPP::maxPrior = 0;
 	}
 	if (Extra_FIGH_pause_check)

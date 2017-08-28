@@ -75,6 +75,8 @@ public:
 	bool etrd_count_valid;
 	int etrd_life0_count;
 	int lightningRecreate;
+	int extraDelay;
+	int delayEnd;
 	//Stickman
 	playerst player;
 	playerst player2;
@@ -201,7 +203,7 @@ public:
 	void UpdateParticles(int start, int end);
 	void SimulateGoL();
 	void SimulateLLoops();
-	void RecalcFreeParticles();
+	void RecalcFreeParticles(bool do_life_dec);
 	void CheckStacking();
 	void BeforeSim();
 	void AfterSim();

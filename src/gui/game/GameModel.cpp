@@ -23,6 +23,8 @@
 #include "gui/interface/Engine.h"
 #include "gui/interface/Point.h"
 
+#include "simulation/MULTIPPE_Update.h"
+
 
 GameModel::GameModel():
 	clipboard(NULL),
@@ -42,6 +44,7 @@ GameModel::GameModel():
 {
 	sim = new Simulation();
 	ren = new Renderer(ui::Engine::Ref().g, sim);
+	MULTIPPE_Update::ren_ = ren;
 
 	activeTools = regularToolset;
 
@@ -90,6 +93,8 @@ GameModel::GameModel():
 	sim->pretty_powder =  Client::Ref().GetPrefInteger("Simulation.PrettyPowder", 0);
 	sim->extraLoopsCA = Client::Ref().GetPrefBool("Simulation.LangtonsLoops", false);
 	sim->extraLoopsType = Client::Ref().GetPrefInteger("Simulation.ExtraLoopsType", 0);
+
+	Element_PHOT::ignite_flammable = Client::Ref().GetPrefInteger("ElementsFlags.PHOTIgnite", 1);
 
 	Favorite::Ref().LoadFavoritesFromPrefs();
 
@@ -178,6 +183,8 @@ GameModel::~GameModel()
 	Client::Ref().SetPref("Decoration.Alpha", (int)colour.Alpha);
 
 	Client::Ref().SetPref("Simulation.UndoHistoryLimit", undoHistoryLimit);
+	
+	Client::Ref().SetPref("ElementsFlags.PHOTIgnite", Element_PHOT::ignite_flammable);
 
 	Favorite::Ref().SaveFavoritesToPrefs();
 
@@ -686,7 +693,7 @@ void GameModel::SetSave(SaveInfo * newSave)
 			}
 			// This save was probably just created, and we didn't know the ID when creating it
 			// Update with the proper ID
-			else if (saveData->authors.get("id", -1) == 0)
+			else if (saveData->authors.get("id", -1) == 0 || saveData->authors.get("id", -1) == -1)
 			{
 				saveData->authors["id"] = newSave->id;
 			}

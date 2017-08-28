@@ -9,6 +9,7 @@ class MULTIPPE_Update
 public:
 	MULTIPPE_Update() { }
 	virtual ~MULTIPPE_Update() { }
+	static Renderer * ren_;
 	static int update(UPDATE_FUNC_ARGS);
 	static int graphics(GRAPHICS_FUNC_ARGS);
 	static void InsertText(Simulation *sim, int i, int x, int y, int ix, int iy);

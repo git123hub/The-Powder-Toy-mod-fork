@@ -56,6 +56,8 @@ extern "C" {
 
 #include "client/HTTP.h"
 
+#include "simulation/simplugin.h"
+
 using namespace std;
 
 #define INCLUDE_SYSWM
@@ -973,6 +975,11 @@ void SigHandler(int signal)
 		BlueScreen("Unexpected program abort");
 		break;
 	}
+}
+
+void DelayOperation1(Simulation * sim, int ms){
+	sim->delayEnd = SDL_GetTicks() + ms;
+	sim->SimExtraFunc |= 2;
 }
 
 int main(int argc, char * argv[])

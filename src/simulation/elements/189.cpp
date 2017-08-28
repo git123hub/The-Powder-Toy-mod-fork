@@ -436,6 +436,9 @@ void Element_MULTIPP::interactDir(Simulation* sim, int i, int x, int y, Particle
 				part_phot->ctype = 0x104;
 				sim->part_change_type(i, x, y, PT_E186);
 				break;
+			case 24: // set PHOT's temp
+				part_phot->temp = part_other->temp;
+				break;
 		}
 	}
 }
@@ -575,6 +578,7 @@ int Element_MULTIPP::EMPTrigger(Simulation *sim, int triggerCount)
 		case PT_SWCH: case PT_DTEC:
 		case PT_PSNS: case PT_TSNS: case PT_LSNS:
 		case PT_FRME: case PT_PSTN:
+		case PT_CRAY: case PT_DRAY:
 			if (Probability::randFloat() < prob_breakElectronics)
 				sim->part_change_type(r, rx, ry, PT_BREC);
 			break;
@@ -621,7 +625,8 @@ int Element_MULTIPP::EMPTrigger(Simulation *sim, int triggerCount)
 				sim->part_change_type(r, rx, ry, PT_VIBR);
 		case PT_VIBR:
 			parts[r].life = 1000;
-			parts[r].tmp += triggerCount << 9;
+			if (parts[r].tmp < 100000000)
+				parts[r].tmp += triggerCount << 9;
 			parts[r].tmp2 = 0;
 			break;
 		case PT_URAN:

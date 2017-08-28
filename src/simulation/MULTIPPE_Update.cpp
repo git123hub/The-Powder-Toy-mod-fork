@@ -1,7 +1,8 @@
 #include "simulation/Elements.h"
 #include "simulation/Air.h"
-#include "simulation/MULTIPPE_Update.h"
-#include "SDLCompat.h" // SDL_Delay in SDL.h? 
+//#include "simulation/Gravity.h"
+#include "simulation/MULTIPPE_Update.h" // link to Renderer
+// #include "SDLCompat.h" // SDL_Delay in SDL.h? 
 
 #ifdef LUACONSOLE
 #include "lua/LuaScriptInterface.h"
@@ -27,6 +28,8 @@ unsigned msvc_clz(unsigned a)
 #define __builtin_clz msvc_clz
 #endif
 
+Renderer * MULTIPPE_Update::ren_;
+
 
 // 'UPDATE_FUNC_ARGS' definition: Simulation* sim, int i, int x, int y, int surround_space, int nt, Particle *parts, int pmap[YRES][XRES]
 // FLAG_SKIPMOVE: not only implemented for PHOT
@@ -38,7 +41,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 	static int tron_ry[4] = { 0,-1, 0, 1};
 	static int osc_r1 [4] = { 1,-1, 2,-2};
 	int rx, ry, rlife = parts[i].life, r, ri, rtmp, rctype;
-	int rr, rndstore, rt, rii, rrx, rry, nx, ny, pavg;
+	int rr, rndstore, rt, rii, rrx, rry, nx, ny, pavg, rrt;
 	// int tmp_r;
 	float rvx, rvy, rdif;
 	int docontinue;
@@ -78,6 +81,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			int direction = (rr + (rtmp >> 17)) & 0x3;
 			rx = x + tron_rx[direction];
 			ry = y + tron_ry[direction];
+		jump1a:
 			r = pmap[ry][rx];
 			rii = parts[r >> 8].life;
 			rrx = rii >> 1;
@@ -100,6 +104,14 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			else if ((r & 0xFF) == PT_METL || (r & 0xFF) == PT_PSCN || (r & 0xFF) == PT_NSCN)
 			{
 				conductTo (sim, r, rx, ry, parts);
+			}
+			else if ((r & 0xFF) == PT_ETRD)
+			{
+				rr = parts[r>>8].tmp; (rr <= 0) && (rr = 1);
+				rx += rr * tron_rx[direction];
+				ry += rr * tron_ry[direction];
+				if (sim->InBounds(rx, ry))
+					goto jump1a;
 			}
 		break1c:
 			rtmp &= 0xE0000;
@@ -354,6 +366,10 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		break;
 #endif /* NO_SPC_ELEM_EXPLODE */
 	case 10: // electronics debugger input [电子产品调试]
+		if ((rtmp & 0xFF) >= 0x7C)
+			rtmp -= 0x6C;
+		else if ((rtmp & 0xFF) >= 0x10)
+			return return_value;
 		for (rx = -1; rx <= 1; rx++)
 			for (ry = -1; ry <= 1; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
@@ -424,7 +440,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							rctype = parts[r>>8].ctype;
 							rr = pmap[y-ry][x-rx];
 							{
-								int rrt = parts[rr>>8].ctype & 0xFF, tFlag = 0;
+								rrt = parts[rr>>8].ctype & 0xFF;
+								int tFlag = 0;
 								switch (rr & 0xFF)
 								{
 									case PT_STOR: tFlag = PROP_CTYPE_INTG; break;
@@ -502,15 +519,14 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							}
 							break;
 						case 15:
-							SDL_Delay(parts[i].ctype);
-							*(Element_MULTIPP::EngineFrameStart) += parts[i].ctype;
+							// SDL_Delay(parts[i].ctype);
+							// *(Element_MULTIPP::EngineFrameStart) += parts[i].ctype;
+							sim->SimExtraFunc |= 0x800;
+							sim->extraDelay += parts[i].ctype;
 							break;
-						default:
-							if ((rtmp & 0xFF) == 0x7E)
-							{
-								sim->SimExtraFunc |= 0x100;
-							}
-							else if ((rtmp & 0xFF) == 0x7F)
+						case 17: sim->SimExtraFunc |= 0x200; break;
+						case 18: sim->SimExtraFunc |= 0x100; break;
+						case 19:
 							{
 #if defined(WIN) && !defined(__GNUC__)
 							// not tested yet
@@ -522,8 +538,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 #else
 								__asm__ __volatile ("pushf; orl $0x100, (%esp); popf");
 #endif
-								return return_value;
 							}
+							return return_value;
 						}
 						if ((rtmp & 0x1FE) == 0x100 && (rx != ry))
 							MULTIPPE_Update::InsertText(sim, i, x, y, -rx, -ry);
@@ -556,7 +572,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				}
 		break;
 	case 12: // SPRK reflector
-		if (!(rtmp & 0x4))
+		if ((rtmp & 0x7) != 0x4)
 		{
 			for (rx = -1; rx <= 1; rx++)
 				for (ry = -1; ry <= 1; ry++)
@@ -569,24 +585,74 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							continue;
 						if (rt == PT_SPRK && ( !(rtmp & 8) == !(sim->elements[parts[r>>8].ctype].Properties & PROP_INSULATED) ) && parts[r>>8].life == 3)
 						{
-							switch (rtmp & 0x3)
+							switch (rtmp & 0x7)
 							{
 							case 0: case 1:
 								parts[i].tmp ^= 1; break;
 							case 2:
 								rr = pmap[y-ry][x-rx];
 								if ((rr & 0xFF) == ELEM_MULTIPP)
-									sim->kill_part(rr >> 8);
-								else
+								{
+									if (parts[rr>>8].life == 12)
+										sim->kill_part(rr >> 8);
+									else if (parts[rr>>8].life == 15)
+									{
+										rrt = parts[rr>>8].tmp;
+										if (rt == PT_NSCN)
+											rrt = 30-rrt;
+										if (rrt <  0) rrt =  0;
+										if (rrt > 30) rrt = 30;
+										rr = pmap[y-2*ry][x-2*rx];
+										if ((rr & 0xFF) == PT_FILT)
+										{
+											rctype = parts[rr>>8].ctype;
+											parts[rr>>8].ctype = (rctype << rrt | rctype >> (30-rrt)) & 0x3FFFFFFF;
+										}
+									}
+								}
+								else if (!rr)
 								{
 									ri = sim->create_part(-1,x-rx,y-ry,ELEM_MULTIPP,12);
 									if (ri >= 0)
 										parts[ri].tmp = 3;
 								}
+								else if ((rr & 0xFF) == PT_FILT) // might to making FILT oscillator
+								{
+									int * ctype_ptr = &parts[rr>>8].ctype;
+									if (parts[i].temp > 373.0f)
+									{
+										if (*ctype_ptr == 1)
+											{ parts[i].temp = 295.15f; continue; }
+										*ctype_ptr >>= 1;
+									}
+									else
+									{
+										if (*ctype_ptr == 0x20000000)
+											{ parts[i].temp = 395.15f; continue; }
+										*ctype_ptr <<= 1;
+										*ctype_ptr &= 0x3FFFFFFF;
+									}
+								}
+								break;
+							case 5:
+								ri = ((int)parts[i].temp - 258) / 10;
+								if (ri <= 0) ri = 1;
+								nx = x - ri*rx; ny = y - ri*ry;
+								if (sim->InBounds(nx, ny) && ((rr = pmap[ny][nx]) & 0xFF) == PT_FILT)
+								{
+									rctype = parts[rr>>8].ctype;
+									while (BOUNDS_CHECK)
+									{
+										rr = pmap[ny -= ry][nx -= rx];
+										if ((rr&0xFF) != PT_FILT)
+											break;
+										parts[rr>>8].ctype = rctype;
+									}
+								}
 								break;
 							}
 						}
-						if ((rtmp & 0x1) && (sim->elements[rt].Properties & (PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
+						if ((rtmp & 0x5) == 0x1 && (sim->elements[rt].Properties & (PROP_CONDUCTS|PROP_INSULATED)) == PROP_CONDUCTS)
 						{
 							conductTo (sim, r, x+rx, y+ry, parts);
 						}
@@ -1363,6 +1429,18 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								{
 									parts[r>>8].tmp2 = 1; parts[r>>8].tmp = 0;
 								}
+								else 
+								{
+									while (BOUNDS_CHECK && ((rt = r & 0xFF) == PT_PRTI || rt == PT_PRTO))
+									{
+										if (rt == PT_PRTO)
+											rt = PT_PRTI;
+										else
+											rt = PT_PRTO;
+										sim->part_change_type(r>>8, ny, nx, rt);
+										r = pmap[ny += ry][nx += rx];
+									}
+								}
 								break;
 							case PT_WIFI:
 								{ // for 29-bit FILT data
@@ -1490,7 +1568,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			
 			break;
 		case 21: // subframe SPRK generator/canceller
-			rrx = (parts[i].temp < 373.0f) ? 4 : 3;
+			rrx = (parts[i].temp < 373.0f) ? 4 : (parts[i].temp < 523.0f) ? 3 : 2;
 			rry = (parts[i].temp < 273.15f);
 			for (rx = -1; rx < 2; rx++)
 				for (ry = -1; ry < 2; ry++)
@@ -1825,6 +1903,25 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				}
 			}
 			break;
+		case 30: // get TPT options
+			switch (rtmp)
+			{
+				case  0: rr = sim->pretty_powder; break;		// get "P" option state
+				case  1: rr = ren_->gravityFieldEnabled; break;	// get "G" option state
+				case  2: rr = ren_->decorations_enable; break;	// get "D" option state
+				case  3: rr = sim->grav->ngrav_enable; break;	// get "N" option state
+				case  4: rr = sim->aheat_enable; break;			// get "A" option state
+				case  5: rr = !sim->legacy_enable; break;		// check "Heat simulation"
+				case  6: rr = sim->water_equal_test; break;		// check "Water equalization"
+				case  7: rr = sim->air->airMode != 4; break;	// check "Air updating"
+				case  8: rr = !(sim->air->airMode & 2); break;	// check "Air velocity"
+				case  9: rr = !(sim->air->airMode & 1); break;	// check "Air pressure"
+				case 10: rr = !sim->gravityMode; break;			// check "Vertical gravity mode"
+				case 11: rr = sim->gravityMode == 2; break;		// check "Radial gravity mode"
+			}
+			if (rr)
+				Element_BTRY::update(UPDATE_FUNC_SUBCALL_ARGS);
+			break;
 		}
 		break;
 			
@@ -1867,7 +1964,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						if (rctype != PT_LIGH || parts[r>>8].ctype == PT_TESC || !(rand() & 15))
 						{
 							nx = x+rx; ny = y+ry;
-							if (rctype == PT_EMBR) // use by EMBR (explosion spark) emitter
+							if (rctype == PT_EMBR || rctype == PT_ACID) // use by EMBR (explosion spark) emitter
 							{
 								rr = pmap[ny][nx];
 								if ((rr & 0xFF) != PT_GLAS)
@@ -1881,7 +1978,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								{
 									ny += ry, nx += rx, rr = pmap[ny][nx];
 								}
-								int rrt = rr&0xFF;
+								rrt = rr&0xFF;
 								switch (rrt)
 								{
 								case PT_NONE:

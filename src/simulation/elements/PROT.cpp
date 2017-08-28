@@ -102,9 +102,26 @@ int Element_PROT::update(UPDATE_FUNC_ARGS)
 			parts[i].temp = parts[under>>8].temp;
 			goto no_temp_change;
 		}
-		else if (parts[under>>8].life == 10 && parts[under>>8].temp > 1273.0f)
+		else if (parts[under>>8].life == 10)
 		{
-			sim->kill_part(i);
+			if (parts[under>>8].temp > 1273.0f)
+			{
+				sim->kill_part(i);
+				return 1;
+			}
+			else if (parts[under>>8].temp < 73.15f)
+			{
+				parts[i].tmp2 &= ~1;
+				goto no_temp_change;
+			}
+		}
+		else if (parts[under>>8].life == 11 && parts[under>>8].tmp2 == 1)
+		{
+			sim->part_change_type(i, x, y, PT_PHOT);
+			parts[i].x = x;
+			parts[i].y = y;
+			parts[i].life *= 2;
+			parts[i].ctype = 0x3FFFFFFF;
 			return 1;
 		}
 		break;
@@ -138,9 +155,24 @@ int Element_PROT::update(UPDATE_FUNC_ARGS)
 
 	//if this proton has collided with another last frame, change it into a heavier element
 	no_temp_change:
+
+	int ahead = sim->photons[y][x];
+	if ((ahead & 0xFF) == PT_E186 && parts[ahead>>8].ctype < 0x100)
+	{
+		parts[i].tmp2 |= 2;
+	}
+
 	if (parts[i].tmp)
 	{
 		int newID, element;
+		if (sim->isFromMyMod && parts[i].tmp2 & 2)
+		{
+			if (parts[i].tmp > 280)
+			{
+				element = PT_POLC;
+				goto product1;
+			}
+		}
 		if (parts[i].tmp > 500000)
 			element = PT_SING; //particle accelerators are known to create earth-destroying black holes
 		else if (parts[i].tmp > 700)
@@ -157,14 +189,16 @@ int Element_PROT::update(UPDATE_FUNC_ARGS)
 			element = PT_CO2;
 		else
 			element = PT_NBLE;
+		product1:
 		newID = sim->create_part(-1, x+rand()%3-1, y+rand()%3-1, element);
 		if (newID >= 0)
 			parts[newID].temp = restrict_flt(100.0f*parts[i].tmp, MIN_TEMP, MAX_TEMP);
+		else if (sim->isFromMyMod && (parts[i].tmp2 & 2))
+			return 0;
 		sim->kill_part(i);
 		return 1;
 	}
 	//collide with other protons to make heavier materials
-	int ahead = sim->photons[y][x];
 	if ((ahead>>8) != i && (ahead&0xFF) == PT_PROT)
 	{
 		float velocity1 = powf(parts[i].vx, 2.0f)+powf(parts[i].vy, 2.0f);
@@ -176,6 +210,7 @@ int Element_PROT::update(UPDATE_FUNC_ARGS)
 		if (difference > 3.12659f && difference < 3.15659f && velocity1 + velocity2 > 10.0f)
 		{
 			parts[ahead>>8].tmp += (int)(velocity1 + velocity2);
+			parts[ahead>>8].tmp2 |= (parts[i].tmp2 & 2);
 			sim->kill_part(i);
 			return 1;
 		}
