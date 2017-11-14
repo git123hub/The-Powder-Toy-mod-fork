@@ -33,6 +33,14 @@ class Tool;
 	lua_pushinteger(L, NAME);\
 	lua_setfield(L, -2, #NAME)
 
+#define MAX_LUA_DEBUG_FUNCTIONS 320
+
+#ifdef TPT_NEED_DLL_PLUGIN
+#include <windows.h>
+#define MAX_DLL_FUNCTIONS 256
+#define DLL_FUNCTIONS_ARGS Simulation*, int, int, int, void*
+#endif
+
 class TPTScriptInterface;
 class LuaScriptInterface: public CommandInterface
 {
@@ -113,12 +121,15 @@ class LuaScriptInterface: public CommandInterface
 	static int simulation_neighbours(lua_State * l);
 	static int simulation_framerender(lua_State * l);
 	static int simulation_gspeed(lua_State * l);
+	static int simulation_takeSnapshot(lua_State *l);
 	static int simulation_CAType(lua_State * l);
 	static int simulation_createDebugComponent(lua_State * l);
 	static int simulation_breakable_wall_count(lua_State * l);
 	static int simulation_setCustomGOLRule(lua_State * l);
 	static int simulation_getGOLRule(lua_State * l);
 	static int simulation_setCustomGOLGrad(lua_State * l);
+	static int simulation_get_pfree(lua_State * l);
+	static int simulation_pmap_move_to(lua_State * l);
 
 	//Stickman attributes
 	void initStickmanAPI();
@@ -214,6 +225,9 @@ public:
 	virtual int Command(std::string command);
 	virtual std::string FormatCommand(std::string command);
 	virtual ~LuaScriptInterface();
+#ifdef TPT_NEED_DLL_PLUGIN
+	static int (__stdcall *(dll_trigger_func[MAX_DLL_FUNCTIONS]))(DLL_FUNCTIONS_ARGS);
+#endif
 };
 
 

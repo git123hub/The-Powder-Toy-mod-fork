@@ -1,10 +1,7 @@
 #include "simulation/Elements.h"
 //#TPT-Directive ElementClass Element_POLC PT_POLC 188
 
-/*
-TODO: 
-	- "muted version" a powder created by mixing POLC with ? that is weaker
-*/
+bool Element_POLC_Init = false;
 
 Element_POLC::Element_POLC()
 {
@@ -50,90 +47,80 @@ Element_POLC::Element_POLC()
 
 	Update = &Element_POLC::update;
 	Graphics = &Element_POLC::graphics;
+	
+	if (!Element_POLC_Init)
+	{
+		Element_POLC_Init = true;
+
+		for(int i = 0; i < 20; i++)
+			Element_POLC::strengthlist[i] = (int)((RAND_MAX + 1) * 3.2e-5 * (400 - i * i));
+	}
 }
+
+#define LIMIT 20
+
+//#TPT-Directive ElementHeader Element_POLC static int strengthlist[20]
+int Element_POLC::strengthlist[20];
 
 //#TPT-Directive ElementHeader Element_POLC static int update(UPDATE_FUNC_ARGS)
 int Element_POLC::update(UPDATE_FUNC_ARGS)
 {
-	int r, s, rx, ry, rr, sctype, stmp, trade;
-	bool is_found = false, is_warp;
+	int r, s, rx, ry, rr, sctype, actype, stmp;
 	const int cooldown = 15;
-	const int limit = 20;
 	float tempTemp, tempPress;
 	rr = sim->photons[y][x];
 	stmp = parts[i].tmp;
+	
+	int tobranch = !(rand() % 10), rndstore;
+	bool b1;
 
-	if (stmp < limit && !parts[i].life)
+	if (stmp < LIMIT && !parts[i].life)
 	{
 		sctype = parts[i].ctype & 0xFF; // don't create SPC_AIR
-		is_warp = (sctype == PT_WARP);
-		if (((is_warp ? (int)(parts[i].temp) >> 6 : 1) > rand() % 8192) && !stmp)
+		b1 = rr && (
+			(rr & 0xFF) == PT_ELEC || (rr & 0xFF) == PT_E186
+		);
+		
+		if (b1 ? (rand() < strengthlist[std::max(stmp, 0)]) : (!stmp && !(rand() % 8192)))
 		{
-			if (!sctype)
-				s = sim->create_part(-3, x, y, PT_ELEC);
-			else if (sim->elements[sctype].Properties & TYPE_ENERGY)
-				s = sim->create_part(-3, x, y, sctype);
+			if (!sctype || sim->elements[sctype].Properties & TYPE_ENERGY)
+			{
+				actype = sctype ? sctype : PT_ELEC;
+				(b1 && tobranch) && (actype = PT_E186);
+				s = sim->create_part(-3, x, y, actype);
+			}
 			else
 			{
-				rx = rand() % 5 - 2;
-				ry = rand() % 5 - 2;
-				if (sim->IsWallBlocking(x+rx, y+ry, sctype))
-					s = -1; // it's wall blocked
-				else
-					s = sim->create_part(-1, x+rx, y+ry, sctype);
+				rndstore = rand();
+				rx = rndstore % 5 - 2;
+				rndstore >>= 7;
+				ry = rndstore % 5 - 2;
+				s = sim->create_part(-1, x+rx, y+ry, sctype);
 			}
 			if (s >= 0)
 			{
 				parts[i].life = cooldown;
-				parts[i].tmp = 1;
-				if (parts[i].temp < 520.0f)
-					parts[i].temp += 5.0f;
+				parts[i].tmp ++;
+				if (parts[i].temp < 516.0f)
+					parts[i].temp += 10.0f;
 				parts[s].temp = parts[i].temp;
-				if (sctype == PT_GRVT)
+				if (actype == PT_E186)
+					parts[s].ctype = sctype;
+				else if (actype == PT_GRVT)
 					parts[s].tmp = 0;
-				else if (is_warp)
-					parts[s].tmp2 = 3000 + rand() % 10000;
-			}
-		}
-		if (rr && ((rr & 0xFF) == PT_ELEC || (rr & 0xFF) == PT_E186) && !(rand()%80) && ((stmp - 11) < rand() % 10))
-		{
-			s = -1;
-			if (rand() % 10)
-			{
-				if (!sctype)
-					s = sim->create_part(-3, x, y, PT_ELEC);
-				else if (sim->elements[sctype].Properties & TYPE_ENERGY)
-					s = sim->create_part(-3, x, y, sctype);
-			}
-			else
-				s = sim->create_part(-3, x, y, PT_E186);
-			parts[i].life = cooldown;
-			parts[i].tmp ++;
-			if (parts[i].temp < 520.0f)
-				parts[i].temp += 5.0f;
-
-			parts[rr>>8].temp = parts[i].temp;
-			if (s >= 0)
-			{
-				parts[s].ctype = sctype;
-				parts[s].temp = parts[i].temp;
-				float veloc_multipler = (rand()%102 + 9950.0f) / 10000.0f;
-				parts[s].vx = parts[rr>>8].vx * veloc_multipler;
-				parts[s].vy = parts[rr>>8].vy * veloc_multipler;
-				if (sctype == PT_GRVT)
-					parts[s].tmp = 0;
+				if (b1) // scatter process?
+				{
+					rndstore = rand();
+					parts[s].vx = parts[rr>>8].vx + ((rndstore & 0x7F) - 0x3F) * 0.0005f;
+					rndstore >>= 7;
+					parts[s].vy = parts[rr>>8].vy + ((rndstore & 0x7F) - 0x3F) * 0.0005f;
+				}
 			}
 		}
 	}
-	if ((rr & 0xFF) == PT_NEUT && !(rand()%10))
+	if (tobranch)
 	{
-		s = parts[i].tmp;
-		parts[i].tmp -= s > 0 ? (s >> 3) + 1 : 0;
-	}
-	if (parts[i].ctype & ~0xFF)
-		parts[i].ctype -= 0x100;
-	else
-	{
+		int rndstore, b = 0;
 		for (rx=-2; rx<3; rx++)
 			for (ry=-2; ry<3; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
@@ -142,7 +129,7 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 					if (!r) continue;
 					switch (r & 0xFF)
 					{
-					case PT_URAN: case PT_PLUT:
+					case PT_PLUT:
 						if (parts[r>>8].tmp2 >= 10)
 						{
 							parts[r>>8].tmp = 0;
@@ -151,24 +138,21 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 						}
 						break;
 					case PT_POLO:
-						if (!(rand()%40))
+						if (!b)
+							b = 4, rndstore = rand();
+						else 
+							b--;
+						parts[i].temp *= 0.98;
+						if (!(rndstore&7))
 						{
-							if (!(rand()%4))
-							{
-								parts[i].tmp = 0;
-								parts[r>>8].tmp2 = 0; // clear absorbed PROT?
-							}
-							parts[r>>8].tmp = 0;
-							parts[r>>8].temp *= 0.95;
+							parts[r>>8].tmp3 = 20;
 						}
-						is_found = true;
+						rndstore >>= 3;
 						break;
 					case PT_POLC: // don't interacting itself
 						break;
 					}
 				}
-		if (!is_found)
-			parts[i].ctype += ((rand() % 128) + 128) << 8;
 	}
 	return 0;
 }
@@ -177,15 +161,14 @@ int Element_POLC::update(UPDATE_FUNC_ARGS)
 //#TPT-Directive ElementHeader Element_POLC static int graphics(GRAPHICS_FUNC_ARGS)
 int Element_POLC::graphics(GRAPHICS_FUNC_ARGS)
 {
-	if (cpart->tmp >= 20) {
+	if (cpart->tmp >= LIMIT)
+	{
 		*colr = 0x70;
 		*colg = 0x70;
 		*colb = 0x70;
-	} else if (cpart->tmp >= 10) {
-		*colr = (0x71 + *colr) / 2;
-		*colg = (0x71 + *colg) / 2;
-		*colb = (0x71 + *colb) / 2;
 	}
+	else
+		*pixel_mode |= PMODE_GLOW;
 	return 0;
 }
 

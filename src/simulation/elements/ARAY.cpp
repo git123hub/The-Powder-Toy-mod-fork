@@ -44,8 +44,14 @@ Element_ARAY::Element_ARAY()
 	Update = &Element_ARAY::update;
 }
 
-// #TPT-Directive ElementHeader Element_ARAY static int temp_z1[5];
-// int Element_ARAY::temp_z1[5];
+//#TPT-Directive ElementHeader Element_ARAY static const unsigned char to_angle[9];
+const unsigned char Element_ARAY::to_angle[9] = {0,1,2,7,0,3,6,5,4};
+
+//#TPT-Directive ElementHeader Element_ARAY static const signed char param1[4][2];
+const signed char Element_ARAY::param1[4][2] = {{-1, 1}, {1, -1}, {1, 1}, {-1, -1}};
+
+//#TPT-Directive ElementHeader Element_ARAY static char tmpdir[2];
+char Element_ARAY::tmpdir[2];
 
 //#TPT-Directive ElementHeader Element_ARAY static int update(UPDATE_FUNC_ARGS)
 int Element_ARAY::update(UPDATE_FUNC_ARGS)
@@ -53,6 +59,8 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 	int r_life, swap;
 	int modProp;
 	int modFlag;
+	static float flt1;
+	static Particle *partt;
 	if (!parts[i].life)
 	{
 		for (int rx = -1; rx <= 1; rx++)
@@ -64,19 +72,20 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 						continue;
 					if ((r&0xFF) == PT_SPRK && parts[r>>8].life == 3)
 					{
+						// EmitRay (i, r, x, y, rx, ry, sim, parts);
 						bool isBlackDeco = false;
 						int inputType = parts[r>>8].ctype;
 						int destroy = (inputType == PT_PSCN) ? 1 : 0;
 						int nostop = (inputType == PT_INST) ? 1 : 0;
 						int spc_conduct = 0, ray_less = 0;
-						int colored = 0, noturn = 0, rt;
+						int colored = 0, noturn = 0, rt, b;
 						static int tmp[4];
 						int max_turn = parts[i].tmp, tmpz = 1, tmpz2 = 0;
 						int r_incr = 1, pass_wall = 1;
 						if (max_turn <= 0)
 							max_turn = 256;
 						modFlag = 0;
-						int docontinue, nxx, nxi, nyy, nyi;
+						int docontinue, nxx, nxi, nx2, nyy, nyi, ny2;
 						for (docontinue = 1, nxx = nxi = rx*-1, nyy = nyi = ry*-1; docontinue; nyy+=nyi, nxx+=nxi)
 						{
 							if (!(x+nxx<XRES && y+nyy<YRES && x+nxx >= 0 && y+nyy >= 0))
@@ -121,13 +130,17 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 							else if (rt == ELEM_MULTIPP)
 							{
 								r_life = parts[r].life;
+								int front1, front2;
 								switch (r_life)
 								{
 								case 2:
 									nyy += nyi; nxx += nxi;
 									tmp[0] = pmap[y+nyy][x+nxx];
-									if ((tmp[0]&0xFF) == PT_SWCH)
+									switch (tmp[0]&0xFF)
 									{
+									case PT_SWCH:
+									case PT_HSWC:
+										tmp[2] = tmp[0] & 0xFF;
 										if (inputType == PT_INWR)
 											destroy = parts[tmp[0]>>8].life >= 10;
 										tmp[1] = destroy ? 9 : 10;
@@ -140,27 +153,69 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 												goto break1a;
 											tmp[0] = pmap[y+nyy][x+nxx];
 										}
-										while ((tmp[0]&0xFF) == PT_SWCH);
-									}
-									else if ((tmp[0]&0xFF) == PT_INWR)
-									{
-										do
+										while ((tmp[0]&0xFF) == tmp[2]);
+										break;
+									case PT_LAVA: 
+										if (!parts[tmp[0]>>8].ctype || parts[tmp[0]>>8].ctype == PT_STNE)
 										{
-											sim->create_part(-1, x+nxx, y+nyy, PT_SPRK);
-											nyy += nyi; nxx += nxi;
-											if (!BOUNDS_CHECK)
-												goto break1a;
-											tmp[0] = pmap[y+nyy][x+nxx];
+											parts[tmp[0]>>8].ctype = PT_BRCK;
+											parts[tmp[0]>>8].tmp = 0;
 										}
-										while ((tmp[0]&0xFF) == PT_INWR);
+										break;
+									case PT_CRAY:
+										partt = &parts[tmp[0]>>8];
+										ny2 = y + nyy + nyi * partt->tmp2;
+										nx2 = x + nxx + nxi * partt->tmp2;
+										{
+											int remainp = partt->tmp;
+											if (remainp < 1) remainp = 1;
+											while (remainp--)
+											{
+												nx2 += nxi; ny2 += nyi;
+												if (!sim->InBounds(nx2, ny2)) break;
+												r = pmap[ny2][nx2];
+												if ((sim->elements[r&0xFF].Properties2 & PROP_DRAWONCTYPE) || (r&0xFF) == ELEM_MULTIPP && parts[r>>8].life == 35)
+													parts[r>>8].ctype = partt->ctype;
+											}
+										}
+										goto break1a;
+									case ELEM_MULTIPP:
+										b = parts[tmp[0]>>8].life;
+										if (b == 4)
+										{
+											parts[tmp[0]>>8].ctype = colored;
+											docontinue = nostop;
+										}
+										else if (b == 35)
+										{
+											parts[tmp[0]>>8].ctype &= 0xFF;
+											parts[tmp[0]>>8].ctype |= (colored << 8);
+											docontinue = nostop;
+										}
+										break;
+									default:
+										tmp[2] = tmp[0]&0xFF;
+										if (tmp[2] == PT_INWR || tmp[2] == PT_QRTZ)
+										{
+											do
+											{
+												if (tmp[2] == PT_INWR)
+													sim->create_part(-1, x+nxx, y+nyy, PT_SPRK);
+												else if (parts[tmp[0]>>8].tmp < 0)
+													parts[tmp[0]>>8].tmp = 0;
+												nyy += nyi; nxx += nxi;
+												if (!BOUNDS_CHECK)
+													goto break1a;
+												tmp[0] = pmap[y+nyy][x+nxx];
+											}
+											while ((tmp[0]&0xFF) == tmp[2]);
+										}
 										goto continue1a;
 									}
-									else
-										goto continue1a;
 									continue;
 								case 6:
 									if (spc_conduct == 5)
-										parts[r].temp = parts[i].temp;
+										parts[r].temp = (modFlag & 2) ? flt1 : parts[i].temp;
 									continue;
 								case 13:
 									if (parts[r].tmp2 == 3)
@@ -187,36 +242,51 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											parts[r].flags |= FLAG_SKIPMOVE;
 										parts[r].tmp += (r_incr > 1) ? r_incr : 1;
 										break;
+									case 8:
+										tmpdir[1] = parts[r].tmp;
+										continue;
+									case 12: // random generator
+										docontinue = rand() & 1;
+										continue;
+									case 13:
+										if (max_turn-- <= 0) goto break1a;
+										tmp[0] = parts[r].tmp;
+										nyy += tmp[0] * nxi; nxx -= tmp[0] * nyi;
+										nxi = -nxi; nyi = -nyi;
+										continue;
+									case 17:
+									case 18:
+										parts[r].tmp = PT_BRAY | (destroy << 8);
+										parts[r].tmp2 = 1;
+										break;
 									case 20:
+										nyy += nyi; nxx += nxi;
+										front1 = pmap[y+nyy][x+nxx];
+										while (BOUNDS_CHECK && (front1&0xFF) == PT_FILT)
 										{
+											parts[front1>>8].life = 4;
 											nyy += nyi; nxx += nxi;
-											int front1 = pmap[y+nyy][x+nxx];
-											while (BOUNDS_CHECK && (front1&0xFF) == PT_FILT)
+											front1 = pmap[y+nyy][x+nxx];
+										}
+										tmp[0] = parts[r].tmp2 + (r < i); // delay time
+										if (tmp[0] <= 0)
+											tmp[0] += parts[r].tmp; // add pulse time
+										switch (front1&0xFF)
+										{
+										case PT_DLAY:
+											front1 >>= 8;
+											tmp[1] = parts[front1].life - (front1 > i);
+											if (tmp[1] == 0 && front1 > i)
+												Element_DLAY::update (sim, front1, x+nxx, y+nyy, 0, 0, parts, pmap);
+											if (tmp[1] <= 0)
+												parts[front1].life = tmp[0] + (front1 > i);
+											break;
+										case PT_INST:
+											if (tmp[0] == 1)
 											{
 												parts[front1>>8].life = 4;
-												nyy += nyi; nxx += nxi;
-												front1 = pmap[y+nyy][x+nxx];
-											}
-											tmp[0] = parts[r].tmp2 + (r < i); // delay time
-											if (tmp[0] <= 0)
-												tmp[0] += parts[r].tmp; // add pulse time
-											if ((front1&0xFF) == PT_DLAY)
-											{
-												front1 >>= 8;
-												tmp[1] = parts[front1].life - (front1 > i);
-												if (tmp[1] == 0 && front1 > i)
-													Element_DLAY::update (sim, front1, x+nxx, y+nyy, 0, 0, parts, pmap);
-												if (tmp[1] <= 0)
-													parts[front1].life = tmp[0] + (front1 > i);
-											}
-											else if ((front1&0xFF) == PT_INST)
-											{
-												if (tmp[0] == 1)
-												{
-													parts[front1>>8].life = 4;
-													parts[front1>>8].ctype = PT_INST;
-													sim->part_change_type(front1>>8, x+nxx, y+nyy, PT_SPRK);
-												}
+												parts[front1>>8].ctype = PT_INST;
+												sim->part_change_type(front1>>8, x+nxx, y+nyy, PT_SPRK);
 											}
 										}
 										goto break1a;
@@ -243,7 +313,6 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										{
 											int vtmp = parts[r].tmp + 1;
 											int rem1 = parts[r].tmp2;
-											int front1;
 											nyy += vtmp * nyi; nxx += vtmp * nxi;
 											while (sim->InBounds(x+nxx, y+nyy))
 											{
@@ -286,7 +355,7 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									continue;
 								case 23:
 									{
-										int front1 = pmap[y+nyi+nyy][x+nxi+nxx];
+										front1 = pmap[y+nyi+nyy][x+nxi+nxx];
 										int ftype1 = front1 & 0xFF;
 										while (ftype1 == PT_BIZR || ftype1 == PT_BIZRG || ftype1 == PT_BIZRS)
 										{
@@ -294,6 +363,11 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											nyy+=nyi; nxx+=nxi;
 											front1 = pmap[y+nyi+nyy][x+nxi+nxx];
 											ftype1 = front1 & 0xFF;
+										}
+										if (ftype1 == PT_SWCH && (parts[r].tmp > 0))
+										{
+											parts[front1 >> 8].life = 9 + (parts[r].tmp & 1);
+											docontinue = nostop;
 										}
 									}
 									continue;
@@ -303,28 +377,13 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									if (!max_turn)
 										goto break1a;
 									// nxx += nxi; nyy += nyi;
-									tmp[1] = parts[r].tmp & 0xF;
+									tmp[1] = parts[r].tmp & 0x1F;
 									switch (tmp[1])
 									{
-									case 0: // turn right
+									case 0: case 1: case 2: case 3: // turn right, turn left, "\" and "/" reflect
 										tmp[0] = nxi;
-										nxi = -nyi;
-										nyi = tmp[0];
-										break;
-									case 1: // turn left
-										tmp[0] = nxi;
-										nxi = nyi;
-										nyi = -tmp[0];
-										break;
-									case 2: // "\" reflect
-										tmp[0] = nxi;
-										nxi = nyi;
-										nyi = tmp[0];
-										break;
-									case 3: // "/" reflect
-										tmp[0] = nxi;
-										nxi = -nyi;
-										nyi = -tmp[0];
+										nxi = param1[tmp[1]][0] * nyi;
+										nyi = param1[tmp[1]][1] * tmp[0];
 										break;
 									case 4: // go "/\"
 										nxi = 0; nyi = -1;
@@ -350,22 +409,24 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											int tdiff = (tmp[1] == 8 ? 1 : -1) * parts[r].tmp2;
 											while (nxx += nxi, nyy += nyi, BOUNDS_CHECK)
 											{
-												int front1 = pmap[y+nyy][x+nxx];
+												front1 = pmap[y+nyy][x+nxx];
 												if (!front1) goto break1a;
-												if ((front1 & 0xFF) == PT_FILT)
-													parts[front1>>8].life = 4;
-												else if ((front1 & 0xFF) == PT_ARAY)
+												switch (front1 & 0xFF)
 												{
+												case PT_FILT:
+													parts[front1>>8].life = 4; break;
+												case PT_ARAY: case PT_CRAY:
+													{
 													float ftemp = parts[front1>>8].temp + tdiff;
 													parts[front1>>8].temp = restrict_flt(ftemp, MIN_TEMP, MAX_TEMP);
+													}
 													goto break1a;
-												}
-												else if ((front1 & 0xFF) == ELEM_MULTIPP)
-												{
+												case ELEM_MULTIPP:
 													if (parts[front1>>8].life == 28)
 														parts[front1>>8].tmp2 += tdiff;
+													break;
+												default: goto break1a;
 												}
-												else goto break1a;
 											}
 										}
 										goto break1a;
@@ -384,6 +445,34 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 											nxx = tmp[2] - nxi; nyy = tmp[3] - nyi;
 										}
 										continue;
+									case 14:
+									case 15:
+										tmp[0] = to_angle[nxi + 3 * nyi + 4];
+										tmp[1] = tmp[1] * 6 + 5;
+										tmp[0] += tmp[1] * parts[r].tmp2;
+										tmp[0] &= 7;
+										// see PRTI.cpp
+										nxi = sim->portal_rx[tmp[0]];
+										nyi = sim->portal_ry[tmp[0]];
+										break;
+									case 16:
+									case 17:
+										modFlag ^= 4;
+										tmp[2] = to_angle[nxi + 3 * nyi + 4];
+										if (modFlag & 4)
+										{
+											tmp[3] = parts[r].tmp2;
+											tmpdir[0] = tmp[2];
+										}
+										else
+										{
+											tmp[3] = (tmpdir[0] + tmp[1] * 4) & 7;
+											if ((tmp[3] ^ tmp[2]) == 4)
+												tmp[3] ^= 4;
+										}
+										nxi = sim->portal_rx[tmp[3]];
+										nyi = sim->portal_ry[tmp[3]];
+										break;
 									}
 									// nxx -= nxi; nyy -= nyi;
 									max_turn--;
@@ -403,13 +492,14 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										break;
 									case 1:
 										// temp_z1[8] = tmp2 = nostop | (destroy << 1);
-										tmp[0]  ^= 0xAAAAAAAA;
+										tmp[0]  ^= 0x2A;
 										nostop   = (tmp[0] >> (nostop   ? 1 : 0)) & 0x1;
 										destroy  = (tmp[0] >> (destroy  ? 3 : 2)) & 0x1;
 										ray_less = (tmp[0] >> (ray_less ? 5 : 4)) & 0x1;
 										break;
+									case 9:
+										noturn = 2; // no break
 									case 2:
-										// temp_z1[8] = spc_conduct;
 										spc_conduct = tmp[0];
 										break;
 									case 3:
@@ -425,11 +515,23 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									case 6:
 										{
 											nxx += nxi; nyy += nyi;
-											int front1 = pmap[y+nyy][x+nxx];
+											front1 = pmap[y+nyy][x+nxx];
 											switch (front1 & 0xFF)
 											{
 											case PT_NONE:
 												sim->create_part(-1, x+nxx, y+nyy, PT_BRAY);
+												break;
+											case PT_ARAY:
+											case PT_CRAY:
+												if (modFlag & 2)
+												{
+													parts[front1 >> 8].temp = flt1;
+													goto break1a;
+												}
+												break;
+											case PT_STOR:
+												modFlag |= 2;
+												flt1  = parts[front1 >> 8].temp;
 												break;
 											case PT_FRAY:
 												tmpz2 += parts[front1 >> 8].tmp;
@@ -457,13 +559,33 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 												if (!nostop) goto break1a;
 												nxx -= nxi; nyy -= nyi;
 												break;
+											case PT_SWCH:
+												if (tmp[0])
+												{
+													nx2 = x+nxx-tmp[0]*nyi;
+													ny2 = y+nyy+tmp[0]*nxi;
+													if (sim->InBounds(nx2, ny2))
+													{
+														front2 = pmap[ny2][nx2];
+														if ((front2 & 0xFF) == PT_SWCH)
+															parts[front1 >> 8].life = ((parts[front1 >> 8].life >= 10) ? 9 : 10);
+													}
+													docontinue = nostop;
+												}
+												continue;
+											case PT_FILT: continue1c:
+												parts[front1>>8].ctype = colored;
+												nxx += nxi; nyy += nyi;
+												if (BOUNDS_CHECK && ((front1 = pmap[y+nyy][x+nxx])&0xFF) == PT_FILT)
+													goto continue1c;
+												goto break1a;
 											}
 										}
 										break;
 									case 7: // remove front SPRK
 										{
 											nxx += nxi; nyy += nyi;
-											int front1 = pmap[y+nyy][x+nxx];
+											front1 = pmap[y+nyy][x+nxx];
 											int f_type = front1 & 0xFF;
 											if ((front1 & 0xFF) == PT_SPRK)
 											{
@@ -475,9 +597,32 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 												if (f_type == PT_SWCH)
 													parts[front1>>8].life = 19; // keep SWCH on
 											}
-											else if (f_type == PT_SWCH && parts[front1>>8].life >= 10)
+											else if (f_type == PT_SWCH)
 											{
-												parts[front1>>8].life = 19; // keep SWCH on
+												tmp[2] = tmp[0] & 0xFF;
+												tmp[0] >>= 8;
+												if (tmp[0])
+												{
+													nx2 = x+nxx-tmp[0]*nyi;
+													ny2 = y+nyy+tmp[0]*nxi;
+													if (!sim->InBounds(nx2, ny2))
+														goto continue1b;
+													front2 = pmap[ny2][nx2];
+													if ((front2 & 0xFF) == PT_SWCH)
+													{
+														b = ((parts[front2>>8].life >= 10) ? 4 : 0) | ((parts[front1>>8].life >= 10) ? 2 : 0);
+														b = (tmp[2] >> b);
+														parts[front1>>8].life = ((b & 1) ? 10 : 9);
+														parts[front2>>8].life = ((b & 2) ? 10 : 9);
+													}
+												continue1b:
+													docontinue = nostop;
+													continue;
+												}
+												else if (parts[front1>>8].life >= 10)
+												{
+													parts[front1>>8].life = 19; // keep SWCH on
+												}
 											}
 											if (sim->elements[f_type].Properties & (PROP_CONDUCTS|PROP_CONDUCTS_SPEC))
 												parts[front1>>8].life = 8;
@@ -487,10 +632,31 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									case 8:
 										if (max_turn-- <= 0)
 											goto break1a;
-										nxx += tmp[0]*nxi, nyy += tmp[0]*nyi;
+										if (!((parts[r].ctype >> (tmpdir[1] & 0x1F)) & 1))
+											nxx += tmp[0]*nxi, nyy += tmp[0]*nyi;
+										break;
+									case 10:
+										nx2 = x+nxx-tmp[0]*nyi;
+										ny2 = y+nyy+tmp[0]*nxi;
+										if (sim->InBounds(nx2, ny2))
+										{
+											int rr = pmap[ny2][nx2];
+											if ((rr&0xFF) == PT_FILT)
+											{
+												if (inputType == PT_NSCN)
+												{
+													parts[pmap[ny2][nx2]>>8].ctype = colored;
+													goto break1a;
+												}
+												colored = Element_FILT::interactWavelengths(&parts[pmap[ny2][nx2]>>8], colored);
+											}
+											else if ((rr&0xFF) == PT_VOID || (rr&0xFF) == PT_PVOD && parts[rr>>8].life >= 10)
+												goto break1a;
+										}
 										break;
 									}
-									tmpz = 1;
+									tmpz = (tmp[1] != 8) ? 1 : 0;
+								case 33:
 									continue;
 								case 35:
 									if (!(modFlag & 1))
@@ -537,8 +703,9 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 										case 5:
 											if (rt == PT_WOOD)
 												sim->part_change_type(r, x+nxx, y+nyy, PT_SAWD);
-											else if (rt == PT_ARAY || rt == PT_BRAY || rt == PT_HEAC)
+											else if (rt == PT_ARAY || rt == PT_BRAY || rt == PT_CRAY || rt == PT_HEAC)
 											{
+												// ARAY, BRAY, CRAY, DRAY, FRAY
 												parts[r].temp = parts[i].temp;
 												if (rt == PT_BRAY)
 												{
@@ -553,6 +720,13 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 														parts[r].life = 1;
 													}
 												}
+												else if (inputType == PT_BMTL)
+													goto break1a;
+											}
+											else if (rt == PT_QRTZ)
+											{
+												sim->part_change_type(r, x+nxx, y+nyy, PT_PQRT);
+												parts[r].life = 5;
 											}
 											continue;
 										case 6: // melting HEAC
@@ -632,14 +806,15 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 								}
 								else if (rt == PT_STOR)
 								{
+									int rx1, ry1;
 									if (parts[r].tmp)
 									{
 										//Cause STOR to release
-										for (int ry1 = 1; ry1 >= -1; ry1--)
+										for (ry1 = 1; ry1 >= -1; ry1--)
 										{
-											for (int rx1 = 0; rx1 >= -1 && rx1 <= 1; rx1 = -rx1 - rx1 + 1)
+											for (rx1 = 0; rx1 >= -1 && rx1 <= 1; rx1 = -rx1 - rx1 + 1)
 											{
-												int np = sim->create_part(-1, x + nxi + nxx + rx1, y + nyi + nyy + ry1, parts[r].tmp&0xFF);
+												int np = sim->create_part(-1, x + nxx + rx1, y + nyy + ry1, parts[r].tmp&0xFF);
 												if (np != -1)
 												{
 													parts[np].temp = parts[r].temp;
@@ -657,7 +832,7 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 													parts[np].dcolour = parts[r].cdcolour;
 													parts[r].tmp = 0;
 													parts[r].life = 10;
-													break;
+													goto break1b;
 												}
 											}
 										}
@@ -678,6 +853,7 @@ int Element_ARAY::update(UPDATE_FUNC_ARGS)
 									else
 										docontinue = 1;
 								}
+							break1b:
 								tmpz = 0;
 							}
 							else if (destroy)

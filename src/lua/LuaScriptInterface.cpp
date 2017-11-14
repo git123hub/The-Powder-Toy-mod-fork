@@ -42,6 +42,9 @@
 #include <unistd.h>
 #endif
 
+#include "simulation/simplugin.h"
+
+
 extern "C"
 {
 #ifdef WIN
@@ -52,6 +55,8 @@ extern "C"
 #include "socket/luasocket.h"
 }
 #include "socket/socket.lua.h"
+
+#define IN_BOUNDS(x, y) ((x)>=0 && (y)>=0 && (x)<XRES && (y)<YRES)
 
 // #include "gui/game/Notification.h" // already in GameModel.h
 
@@ -66,13 +71,18 @@ bool *luacon_currentCommand;
 std::string *luacon_lastError;
 std::string lastCode;
 
-int *lua_el_func, *lua_el_mode, *lua_gr_func;
+int *lua_el_func, *lua_el_mode, *lua_gr_func, *lua_trigger_func;
+unsigned char *lua_trigger_fmode;
 
 int getPartIndex_curIdx;
 int tptProperties; //Table for some TPT properties
 int tptPropertiesVersion;
 int tptElements; //Table for TPT element names
 int tptParts, tptPartsMeta, tptElementTransitions, tptPartsCData, tptPartMeta, tptPart, cIndex;
+
+#ifdef TPT_NEED_DLL_PLUGIN
+bool DLLLoaded = false;
+#endif
 
 int atPanic(lua_State *l)
 {
@@ -91,6 +101,10 @@ int TptNewindexClosure(lua_State *l)
 	return lsi->tpt_newIndex(l);
 }
 
+#ifdef TPT_NEED_DLL_PLUGIN
+int (__stdcall *(LuaScriptInterface::dll_trigger_func[MAX_DLL_FUNCTIONS]))(DLL_FUNCTIONS_ARGS);
+#endif
+	
 LuaScriptInterface::LuaScriptInterface(GameController * c, GameModel * m):
 	CommandInterface(c, m),
 	luacon_mousex(0),
@@ -205,12 +219,16 @@ LuaScriptInterface::LuaScriptInterface(GameController * c, GameModel * m):
 		{"setwindowsize",&luatpt_setwindowsize},
 		{"watertest",&luatpt_togglewater},
 		{"screenshot",&luatpt_screenshot},
+		{"record",&luatpt_record},
 		{"element",&luatpt_getelement},
 		{"element_func",&luatpt_element_func},
 		{"graphics_func",&luatpt_graphics_func},
 		{"two_state_update",&luatpt_two_state_update},
 		{"get_clipboard", &platform_clipboardCopy},
 		{"set_clipboard", &platform_clipboardPaste},
+		{"add_dbg_trigger", &luatpt_debug_trigger_add},
+		{"call_dbg_trigger", &luatpt_call_debug_trigger},
+		{"get_pfree", &simulation_get_pfree},
 		{NULL,NULL}
 	};
 
@@ -354,6 +372,11 @@ tpt.partsdata = nil");
 		lua_gr_func[i] = 0;
 	}
 
+	lua_trigger_func = (int*)malloc(MAX_LUA_DEBUG_FUNCTIONS*(sizeof(int)+sizeof(char))); // sizeof(int)+sizeof(char) = 5 in some operating system
+	lua_trigger_fmode = (unsigned char*)(lua_trigger_func+MAX_LUA_DEBUG_FUNCTIONS);
+	for (int i = 0; i < MAX_LUA_DEBUG_FUNCTIONS; i++)
+		lua_trigger_fmode[i] = 0;
+
 	//make tpt.* a metatable
 	lua_newtable(l);
 	lua_pushlightuserdata(l, this);
@@ -364,10 +387,36 @@ tpt.partsdata = nil");
 	lua_setfield(l, -2, "__newindex");
 	lua_setmetatable(l, -2);
 
+#ifdef TPT_NEED_DLL_PLUGIN
+	if (!(DLLLoaded || (sdl_my_extra_args[0] & ARG0_NO_DLL_PLUGIN)))
+	{
+		HMODULE DLLFuncPack = LoadLibrary("tptplugin.dll");
+		if (DLLFuncPack)
+		{
+			char dllstr[11] = "dllcall_";
+			const char hexdigits[] = "0123456789abcdef";
+			dllstr[10] = 0;
+			for (int i = 0; i < MAX_DLL_FUNCTIONS; i++)
+			{
+				dllstr[8] = hexdigits[i>>4];
+				dllstr[9] = hexdigits[i&15];
+				int (__stdcall *dllfn)(DLL_FUNCTIONS_ARGS) = (int (__stdcall *)(DLL_FUNCTIONS_ARGS))GetProcAddress(DLLFuncPack, dllstr);
+				dll_trigger_func[i] = dllfn;
+			}
+		}
+		else
+			std::fill(&dll_trigger_func[0], &dll_trigger_func[0]+MAX_DLL_FUNCTIONS, (int (__stdcall *)(DLL_FUNCTIONS_ARGS))NULL);
+		DLLLoaded = true;
+	}
+#endif
 }
 
 void LuaScriptInterface::Init()
 {
+#ifndef NO_SCRIPT_MANAGER
+	luacon_loadscriptmanager(luacon_ci->l);
+#endif
+	
 	if(Client::Ref().FileExists("autorun.lua"))
 	{
 		lua_State *l = luacon_ci->l;
@@ -381,6 +430,21 @@ void LuaScriptInterface::Init()
 void LuaScriptInterface::SetWindow(ui::Window * window)
 {
 	Window = window;
+}
+
+int LuaScriptInterface::simulation_get_pfree (lua_State *l)
+{
+	int pfree = luacon_sim->pfree;
+	int i = luaL_optint(l, 1, 0);
+	lua_pushinteger(l, pfree);
+	int args = 1;
+	while (i-- && (pfree >= 0))
+	{
+		pfree = luacon_sim->parts[pfree].life;
+		args++;
+		lua_pushinteger(l, pfree);
+	}
+	return args;
 }
 
 int LuaScriptInterface::tpt_index(lua_State *l)
@@ -803,14 +867,15 @@ void LuaScriptInterface::initSimulationAPI()
 		{"neighbors", simulation_neighbours},
 		{"framerender", simulation_framerender},
 		{"gspeed", simulation_gspeed},
+		{"takeSnapshot", simulation_takeSnapshot},
 		{"CAType", simulation_CAType},
-		// {"CAType", simulation_CAType}, // remove repeated
 		{"createDebugComponent", simulation_createDebugComponent},
 		{"createDComp", simulation_createDebugComponent},
 		{"setCustomGOLRule", simulation_setCustomGOLRule},
 		{"getGOLRule", simulation_getGOLRule},
 		{"setCustomGOLGrad", simulation_setCustomGOLGrad},
 		{"partKillDestroyable", simulation_partKillDestroyable},
+		{"pmap_moveTo", simulation_pmap_move_to},
 		{NULL, NULL}
 	};
 	luaL_register(l, "simulation", simulationAPIMethods);
@@ -989,29 +1054,24 @@ int LuaScriptInterface::simulation_partCreate2(lua_State * l)
 	int newID = lua_tointeger(l, 1);
 	int part_type = lua_tointeger(l, 4);
 	int part_value = lua_tointeger(l, 5);
-	int newID2;
+	int newID2, multiplier;
 	if(newID >= NPART || newID < -3 || part_type < 0 || part_type > 0xFF) // exclude SPC_AIR
 	{
 		lua_pushinteger(l, -1);
 		return 1;
 	}
-	newID2 = luacon_sim->create_part(newID, lua_tointeger(l, 2), lua_tointeger(l, 3), part_type, part_value);
-	if (argCount > 5 && newID2 >= 0)
+	int x = lua_tointeger(l, 2);
+	int y = lua_tointeger(l, 3);
+	if (argCount > 5)
 	{
-		int part_value2 = lua_tointeger(l, 6);
-		if (part_type == PT_LIFE || part_type == PT_FILT)
-			luacon_sim->parts[newID2].tmp = part_value2;
-		else if (part_type == PT_WIFI || part_type == PT_PRTI || part_type == PT_PRTO || part_type == ELEM_MULTIPP && part_value == 33)
-			luacon_sim->parts[newID2].temp = part_value2 * 100.0f;
-		else if (part_type == PT_PUMP || part_type == PT_GPMP || part_type == PT_PSNS || part_type == PT_TSNS || part_type == PT_DLAY || part_type == PT_FRAY || part_type == PT_RPEL)
-		{
-			luacon_sim->parts[newID2].temp = part_value2 + 273.15f;
-		}
-		else if (part_type == PT_ACEL || part_type == PT_DCEL)
-			luacon_sim->parts[newID2].life = part_value2;
-		else
-			luacon_sim->parts[newID2].ctype = part_value2;
+		multiplier = lua_tointeger(l, 6);
 	}
+	do
+	{
+		newID2 = luacon_sim->create_part(newID, x, y, part_type, part_value);
+		multiplier--;
+	}
+	while (multiplier && (newID2 >= 0));
 	lua_pushinteger(l, newID2);
 	return 1;
 }
@@ -1067,6 +1127,30 @@ int LuaScriptInterface::simulation_partPosition(lua_State * l)
 	}
 }
 
+int LuaScriptInterface::simulation_pmap_move_to(lua_State * l)
+{
+	int argCount = lua_gettop(l), particleID = lua_tointeger(l, 1);
+	if (argCount < 3 || particleID < 0 || particleID >= NPART || !luacon_sim->parts[particleID].type) return 0;
+
+	int newX = lua_tointeger(l, 2);
+	int newY = lua_tointeger(l, 3);
+	int oldX = (int)(luacon_sim->parts[particleID].x+0.5f);
+	int oldY = (int)(luacon_sim->parts[particleID].y+0.5f);
+	int type = luacon_sim->parts[particleID].type;
+	
+	if (IN_BOUNDS(newX, newY))
+	{
+		if (IN_BOUNDS(oldX, oldY) && (luacon_sim->pmap[oldY][oldX] >> 8) == particleID)
+			luacon_sim->pmap[oldY][oldX] = 0;
+		luacon_sim->pmap[newY][newX] = type | (particleID << 8);
+		luacon_sim->parts[particleID].x = (float)newX;
+		luacon_sim->parts[particleID].y = (float)newY;
+	}
+	else
+		luacon_sim->kill_part(particleID);
+	return 0;
+}
+
 int LuaScriptInterface::simulation_duplicateParticle (lua_State * l)
 {
 	int ni = lua_tointeger(l, 1); // new index
@@ -1093,14 +1177,16 @@ int LuaScriptInterface::simulation_duplicateParticle (lua_State * l)
 			lua_pushinteger(l, -2);
 			return 1;
 		}
-		int tt = (t != PT_SPRK ? t : PT_METL); // SPRK hack
+		int x_int = (int)(xx+0.5f), y_int = (int)(yy+0.5f);
+		bool spark_draw = (ni == -2 && luacon_sim->pmap[y_int][x_int]);
+		int tt = ((t != PT_SPRK || spark_draw) ? t : PT_METL); // SPRK hack
 		int x = (int)(luacon_sim->parts[i].x + 0.5f); // parent x
 		int y = (int)(luacon_sim->parts[i].y + 0.5f); // parent y
-		int p = luacon_sim->create_part (ni, (int)(xx+0.5f), (int)(yy+0.5f), tt);
-		if (p >= 0)
+		int p = luacon_sim->create_part (ni, x_int, y_int, tt);
+		if (p >= 0 && !spark_draw)
 		{
 			if (t != tt)
-				luacon_sim->part_change_type(p, (int)(xx+0.5f), (int)(yy+0.5f), t); // SPRK hack
+				luacon_sim->part_change_type(p, x_int, y_int, t); // SPRK hack
 			FIGH_tmp = luacon_sim->parts[p].tmp;
 			luacon_sim->parts[p] = luacon_sim->parts[i]; // duplicating particle
 			luacon_sim->parts[p].x = xx; // set .x value
@@ -2457,7 +2543,7 @@ int LuaScriptInterface::simulation_createDebugComponent (lua_State * l)
 		i = luacon_sim->create_part(-1, __x++, __y, ELEM_MULTIPP, 10);
 		if (i >= 0)
 			luacon_sim->parts[i].ctype = (__dx & 0xFFFF) | (__dy << 16);
-			luacon_sim->parts[i].tmp = 0x0100;
+			luacon_sim->parts[i].tmp = 0x0200;
 		while (*__str)
 		{
 			i = luacon_sim->create_part(-1, __x++, __y, ELEM_MULTIPP, 10);
@@ -2513,6 +2599,8 @@ void LuaScriptInterface::initStickmanAPI()
 	lua_setfield(l, -2, "ANTI_GRAV");
 	lua_pushinteger(l, 0x00000400);
 	lua_setfield(l, -2, "NO_EMIT_PLASMA");
+	lua_pushinteger(l, 0x00000800);
+	lua_setfield(l, -2, "ENABLE_VAC_WALL");
 }
 
 playerst* LuaScriptInterface::get_stickman_ptr (int stickmanID)
@@ -2657,6 +2745,12 @@ int LuaScriptInterface::stickman_lastUnused(lua_State * l)
 	return 1;
 }
 
+int LuaScriptInterface::simulation_takeSnapshot(lua_State * l)
+{
+	luacon_controller->HistorySnapshot();
+	return 0;
+}
+
 //// Begin Renderer API
 
 void LuaScriptInterface::initRendererAPI()
@@ -2717,6 +2811,7 @@ void LuaScriptInterface::initRendererAPI()
 	SETCONST(l, COLOUR_LIFE);
 	SETCONST(l, COLOUR_GRAD);
 	SETCONST(l, COLOUR_BASC);
+	SETCONST(l, COLOUR_TMP);
 	SETCONST(l, COLOUR_DEFAULT);
 	SETCONST(l, DISPLAY_AIRC);
 	SETCONST(l, DISPLAY_AIRP);
@@ -2925,6 +3020,7 @@ void LuaScriptInterface::initElementsAPI()
 	SETCONST(l, PROP_CTYPE_SPEC);
 	SETCONST(l, PROP_ENERGY_PART);
 	SETCONST(l, PROP_DEBUG_HIDE_TMP);
+	SETCONST(l, PROP_NEUTRONS_LIKE);
 	SETCONST(l, PROP_NODESTRUCT);
 	SETCONST(l, PROP_CLONE);
 	// SETCONST(l, PROP_DRAWONCTYPE);
@@ -3337,6 +3433,10 @@ int LuaScriptInterface::elements_property(lua_State * l)
 			}
 			luacon_ren->graphicscache[id].isready = 0;
 		}
+		else if(id == PT_PHOT && propertyName == "CanIgnite" && lua_type(l, 3) == LUA_TBOOLEAN)
+		{
+			Element_PHOT::ignite_flammable = lua_toboolean(l, 3);
+		}
 		else
 			return luaL_error(l, "Invalid element property");
 		return 0;
@@ -3345,6 +3445,7 @@ int LuaScriptInterface::elements_property(lua_State * l)
 	{
 		StructProperty property;
 		bool propertyFound = false;
+		int prop_out;
 		std::vector<StructProperty> properties = Element::GetProperties();
 
 		for(std::vector<StructProperty>::iterator iter = properties.begin(), end = properties.end(); iter != end; ++iter)
@@ -3398,8 +3499,26 @@ int LuaScriptInterface::elements_property(lua_State * l)
 			lua_pushstring(l, luacon_sim->elements[id].Identifier);
 			return 1;
 		}
+		else if(id == PT_PHOT && propertyName == "CanIgnite")
+		{
+			lua_pushboolean(l, Element_PHOT::ignite_flammable);
+			return 1;
+		}
+		else if(id == PT_NEUT)
+		{
+			if (propertyName == "RemainingCoolDown")
+				prop_out = luacon_sim->check_neut_cooldown;
+			else if (propertyName == "TotalDensityChecks0")
+				prop_out = luacon_sim->check_neut_counter;
+			else
+				goto luaproperr;
+			lua_pushnumber(l, prop_out);
+			return 1;
+		}
 		else
-			return luaL_error(l, "Invalid element property");
+		{
+			luaproperr: return luaL_error(l, "Invalid element property");
+		}
 	}
 }
 

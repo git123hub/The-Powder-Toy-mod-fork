@@ -48,19 +48,22 @@
 #define PROP_CTYPE_SPEC			0x00000020	//  32 Special case for .ctype
 #define PROP_ENERGY_PART		0x00000040	//  64 VIBR absorb-able particle
 #define PROP_DEBUG_HIDE_TMP		0x00000080	// 128 .tmp is hidden from the debug HUD
+#define PROP_NEUTRONS_LIKE		0x00000100	// 256 neutrons-like element
 #define PROP_UNBREAKABLECLONE	0x00004000  // 2^14
 #define PROP_NODESTRUCT			0x00008000  // 2^15 Indestructible property
 #define PROP_CLONE				0x00010000  // 2^16 Makes elements clone things that touch it
+#define PROP_ALLOWS_WALL		0x00020000	// 2^17
 // #define PROP_DRAWONCTYPE		0x00080000
 // #define PROP_NOSLOWDOWN		0x02000000
 #define PROP_INVISIBLE			0x04000000  // 2^26 Invisible to particles like INVS and FILT
 #define PROP_UNLIMSTACKING		0x08000000  // 2^27 Currently no limit on stacking
 
 #define FLAG_STAGNANT	0x1
-#define FLAG_SKIPMOVE  0x2 // skip movement for one frame, only implemented for PHOT
-#define FLAG_WATEREQUAL 0x4 //if a liquid was already checked during equalization
-#define FLAG_MOVABLE  0x8 // compatibility with old saves (moving SPNG), only applies to SPNG
-#define FLAG_PHOTDECO  0x8 // compatibility with old saves (decorated photons), only applies to PHOT. Having the same value as FLAG_MOVABLE is fine because they apply to different elements, and this saves space for future flags,
+#define FLAG_SKIPMOVE   0x2  // skip movement for one frame, only implemented for PHOT
+#define FLAG_WATEREQUAL 0x4  // if a liquid was already checked during equalization
+#define FLAG_MOVABLE    0x8  // compatibility with old saves (moving SPNG), only applies to SPNG
+#define FLAG_PHOTDECO   0x8  // compatibility with old saves (decorated photons), only applies to PHOT. Having the same value as FLAG_MOVABLE is fine because they apply to different elements, and this saves space for future flags,
+#define FLAG_SKIPCREATE 0x10 // skip creating PROT, only implemented for "E186"
 
 
 #define UPDATE_FUNC_ARGS Simulation* sim, int i, int x, int y, int surround_space, int nt, Particle *parts, int pmap[YRES][XRES]

@@ -5,6 +5,9 @@
 #ifdef WIN
 #define PATH_SEP "\\"
 #define PATH_SEP_CHAR '\\'
+#ifdef __GNUC__
+// #define TPT_NEED_DLL_PLUGIN // if your need DLL, uncomment this line.
+#endif
 #else
 #define PATH_SEP "/"
 #define PATH_SEP_CHAR '/'
@@ -16,11 +19,11 @@
 #endif
 
 #ifndef MINOR_VERSION
-#define MINOR_VERSION 1
+#define MINOR_VERSION 5
 #endif
 
 #ifndef BUILD_NUM
-#define BUILD_NUM 332
+#define BUILD_NUM 336
 #endif
 
 #ifndef SNAPSHOT_ID

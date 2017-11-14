@@ -24,6 +24,13 @@
 #include "DecorationTool.h"
 #include "Favorite.h"
 
+// #include "simplugin.h"
+
+#ifdef __GNUC__
+#define prediction_expect(x,y) (__builtin_expect(x,y))
+#else
+#define prediction_expect(x,y) (x)
+#endif
 
 class SplitButton;
 class SplitButtonAction
@@ -191,8 +198,9 @@ GameView::GameView():
 	introTextMessage(introTextData),
 
 	doScreenshot(false),
-	recording(false),
 	screenshotIndex(0),
+	recording(false),
+	recordingFolder(0),
 	recordingIndex(0),
 	currentPoint(ui::Point(0, 0)),
 	lastPoint(ui::Point(0, 0)),
@@ -207,7 +215,8 @@ GameView::GameView():
 	selectPoint2(0, 0),
 	currentMouse(0, 0),
 	mousePosition(0, 0),
-	placeSaveThumb(NULL)
+	placeSaveThumb(NULL),
+	placeSaveOffset(0, 0)
 {
 
 	int currentX = 1;
@@ -1049,28 +1058,31 @@ void GameView::screenshot()
 	doScreenshot = true;
 }
 
-void GameView::record()
+int GameView::Record(bool record)
 {
-	if(recording)
+	if (!record)
 	{
 		recording = false;
+		recordingIndex = 0;
+		recordingFolder = 0;
 	}
-	else
+	else if (!recording)
 	{
-		class RecordingConfirmation: public ConfirmDialogueCallback {
-		public:
-			GameView * v;
-			RecordingConfirmation(GameView * v): v(v) {}
-			virtual void ConfirmCallback(ConfirmPrompt::DialogueResult result) {
-				if (result == ConfirmPrompt::ResultOkay)
-				{
-					v->recording = true;
-				}
-			}
-			virtual ~RecordingConfirmation() { }
-		};
-		new ConfirmPrompt("Recording", "You're about to start recording all drawn frames. This may use a load of hard disk space.", new RecordingConfirmation(this));
+		// block so that the return value is correct
+		bool record = ConfirmPrompt::Blocking("Recording", "You're about to start recording all drawn frames. This will use a load of disk space.");
+		if (record)
+		{
+			time_t startTime = time(NULL);
+			recordingFolder = startTime;
+			std::stringstream recordingDir;
+			recordingDir << "recordings" << PATH_SEP << recordingFolder;
+			Client::Ref().MakeDirectory("recordings");
+			Client::Ref().MakeDirectory(recordingDir.str().c_str());
+			recording = true;
+			recordingIndex = 0;
+		}
 	}
+	return recordingFolder;
 }
 
 void GameView::updateToolButtonScroll()
@@ -1245,8 +1257,8 @@ void GameView::OnMouseUp(int x, int y, unsigned button)
 				{
 					if (placeSaveThumb && y <= WINDOWH-BARSIZE)
 					{
-						int thumbX = selectPoint2.X - (placeSaveThumb->Width/2);
-						int thumbY = selectPoint2.Y - (placeSaveThumb->Height/2);
+						int thumbX = selectPoint2.X - ((placeSaveThumb->Width-placeSaveOffset.X)/2);
+						int thumbY = selectPoint2.Y - ((placeSaveThumb->Height-placeSaveOffset.Y)/2);
 
 						if (thumbX < 0)
 							thumbX = 0;
@@ -1394,6 +1406,8 @@ void GameView::BeginStampSelection()
 	buttonTipShow = 120;
 }
 
+// char sdl_ignore_quit = 0;
+
 void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool alt)
 {
 	if (introText > 50)
@@ -1491,7 +1505,6 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 		case SDLK_F5:
 			c->ReloadSim();
 			break;
-#if defined(DEBUG) || defined(SNAPSHOT)
 		case 'a':
 			if ((Client::Ref().GetAuthUser().UserElevation == User::ElevationModerator
 			     || Client::Ref().GetAuthUser().UserElevation == User::ElevationAdmin
@@ -1501,12 +1514,9 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 				  new InformationMessage("Save authorship info", authorString, true);
 		  	}
 		  break;
-#endif
 		case 'r':
 			if (ctrl)
 				c->ReloadSim();
-			else
-				record();
 			break;
 		case 'e':
 			c->OpenElementSearch();
@@ -1573,6 +1583,7 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 			break;
 		case SDLK_ESCAPE:
 		case 'q':
+			// if (!(sdl_ignore_quit & 1))
 			ExitPrompt();
 			break;
 		case 'u':
@@ -1682,8 +1693,8 @@ void GameView::OnKeyPress(int key, Uint16 character, bool shift, bool ctrl, bool
 			break;
 		}
 
-		if (shift && showDebug && key == '1')
-			c->LoadRenderPreset(10);
+		if (shift && showDebug && (key == '1' || key == '2'))
+			c->LoadRenderPreset(10+(key-'1'));
 		else if(key >= '0' && key <= '9')
 		{
 			c->LoadRenderPreset(key-'0');
@@ -2070,6 +2081,7 @@ void GameView::NotifyLogChanged(GameModel * sender, string entry)
 void GameView::NotifyPlaceSaveChanged(GameModel * sender)
 {
 	delete placeSaveThumb;
+	placeSaveOffset = ui::Point(0, 0);
 	if(sender->GetPlaceSave())
 	{
 		placeSaveThumb = SaveRenderer::Ref().Render(sender->GetPlaceSave());
@@ -2287,8 +2299,8 @@ void GameView::OnDraw()
 			{
 				if(placeSaveThumb && selectPoint2.X!=-1)
 				{
-					int thumbX = selectPoint2.X - (placeSaveThumb->Width/2) + CELL/2;
-					int thumbY = selectPoint2.Y - (placeSaveThumb->Height/2) + CELL/2;
+					int thumbX = selectPoint2.X - ((placeSaveThumb->Width-placeSaveOffset.X)/2) + CELL/2;
+					int thumbY = selectPoint2.Y - ((placeSaveThumb->Height-placeSaveOffset.Y)/2) + CELL/2;
 
 					ui::Point thumbPos = c->NormaliseBlockCoord(ui::Point(thumbX, thumbY));
 
@@ -2358,6 +2370,7 @@ void GameView::OnDraw()
 			std::vector<char> data = format::VideoBufferToPPM(screenshot);
 
 			std::stringstream filename;
+			filename << "recordings" << PATH_SEP << recordingFolder << PATH_SEP;
 			filename << "frame_";
 			filename << std::setfill('0') << std::setw(6) << (recordingIndex++);
 			filename << ".ppm";
@@ -2404,10 +2417,11 @@ void GameView::OnDraw()
 			"PRSINS", "PRSINS", "TRONI", "TRONO", "LASER", "DIRCH", "HEATER", "PHTDUP", "VIBR2", "VIBR2",
 			"DEBUG", "PHTEM", "SPREFL", "DECOR", "DECO2", "PRTINS", "LOGICG", "PHDIOD", "DECO3", "NOTGIN",
 			"PARTEM", "EXPANDER", "EN_REFL", "STKMJ", "MOV_DRAY", "EXT_DRAY", "BUTTON", "STKSET", "RAY_REFL", "TRONE",
-			"TRONF", "TRONDL", "RAY_PC", "WIFI2", "FILTINC", "RNMRAY", "TMP2_T", "L_ANT", "PART_TR"
+			"TRONF", "TRONDL", "RAY_PC", "WIFI2", "FILTINC", "RNMRAY", "TMP2_T", "L_ANT", "PART_TR", "WAIT",
+			"LUACALL"
 		};
-		const int maxE189Type = 38;
-		static const int E189IntM[] = {0x81055020, 0x00000026};
+		const int maxE189Type = 40;
+		static const int E189IntM[] = {0x81055020, 0x00000127};
 		//Draw info about simulation under cursor
 		int wavelengthGfx = 0, alpha = 255;
 		if (toolTipPosition.Y < 120)
@@ -2469,7 +2483,7 @@ void GameView::OnDraw()
 					{
 						ctype &= 0x1FF;
 					}
-					else if (partlife == 38)
+					else if (partlife == 38 || partlife == 39)
 					{
 						ctype &= 0xFF;
 					}
@@ -2813,49 +2827,42 @@ void GameView::OnDraw()
 			g->fillrect(XRES-20-textWidth, 27, textWidth+8, 14, 0, 0, 0, alpha*0.5f);
 			g->drawtext(XRES-16-textWidth, 30, (const char*)sampleInfo.str().c_str(), 255, 255, 255, alpha*0.75f);
 			
+			char tempDebugState = (char)showDebugStateFlags & 3, temp_shift = 0;
+			if (prediction_expect(tempDebugState, 0))
+			{
+			if (sample.WallType == WL_FAN) tempDebugState |= (tempDebugState << 1) & 0x4;
+			if (!sample.isMouseInSim) tempDebugState &= 0x1;
 			int __currPosY = 41; // 27 + 14
 			int tempValue;
 			
-			if (showDebugStateFlags & 0x00000001)
+			for (; temp_shift < 3; temp_shift++)
 			{
+				if (!(tempDebugState & (1<<temp_shift))) continue;
 				sampleInfo.str(std::string());
-
-				tempValue = ren->sim->breakable_wall_count; // using "Renderer", actually not "Renderer"
-				if (tempValue)
-					sampleInfo << "breakable_wall_count: " << tempValue << ", ";
-				sampleInfo << "sim_max_pressure: " << std::fixed << c->sim_max_pressure_resolve();
-
+				switch (temp_shift)
+				{
+				case 0:
+					tempValue = ren->sim->breakable_wall_count;
+					if (tempValue)
+						sampleInfo << "breakable_wall_count: " << tempValue << ", ";
+					sampleInfo << "sim_max_pressure: " << std::fixed << c->sim_max_pressure_resolve();
+					break;
+				case 1:
+					sampleInfo << "Air velocity X: " << std::fixed << sample.AirVelocityX << ", ";
+					sampleInfo << "velocity Y: " << std::fixed << sample.AirVelocityY;
+					if (sample.AirBlocked)
+						sampleInfo << ", blocking air";
+					break;
+				case 2:
+					sampleInfo << "fvx: " << std::fixed << ren->sim->fvx[sample.PositionY/CELL][sample.PositionX/CELL] << ", ";
+					sampleInfo << "fvy: " << std::fixed << ren->sim->fvy[sample.PositionY/CELL][sample.PositionX/CELL];
+					break;
+				}
 				textWidth = Graphics::textwidth((char*)sampleInfo.str().c_str());
 				g->fillrect(XRES-20-textWidth, __currPosY, textWidth+8, 15, 0, 0, 0, alpha*0.5f);
 				g->drawtext(XRES-16-textWidth, __currPosY + 3, (const char*)sampleInfo.str().c_str(), 255, 255, 255, alpha*0.75f);
 				__currPosY += 15;
 			}
-			if ((showDebugStateFlags & 0x00000002) && sample.isMouseInSim)
-			{
-				sampleInfo.str(std::string());
-
-				sampleInfo << "Air velocity X: " << std::fixed << sample.AirVelocityX << ", ";
-				sampleInfo << "velocity Y: " << std::fixed << sample.AirVelocityY;
-				if (sample.AirBlocked)
-					sampleInfo << ", blocking air";
-
-				textWidth = Graphics::textwidth((char*)sampleInfo.str().c_str());
-				g->fillrect(XRES-20-textWidth, __currPosY, textWidth+8, 15, 0, 0, 0, alpha*0.5f);
-				g->drawtext(XRES-16-textWidth, __currPosY + 3, (const char*)sampleInfo.str().c_str(), 255, 255, 255, alpha*0.75f);
-				__currPosY += 15;
-
-				if (sample.WallType == WL_FAN)
-				{
-					sampleInfo.str(std::string());
-
-					sampleInfo << "fvx: " << std::fixed << ren->sim->fvx[sample.PositionY/CELL][sample.PositionX/CELL] << ", ";
-					sampleInfo << "fvy: " << std::fixed << ren->sim->fvy[sample.PositionY/CELL][sample.PositionX/CELL];
-					
-					textWidth = Graphics::textwidth((char*)sampleInfo.str().c_str());
-					g->fillrect(XRES-20-textWidth, __currPosY, textWidth+8, 15, 0, 0, 0, alpha*0.5f);
-					g->drawtext(XRES-16-textWidth, __currPosY + 3, (const char*)sampleInfo.str().c_str(), 255, 255, 255, alpha*0.75f);
-					__currPosY += 15;
-				}
 			}
 		}
 	}

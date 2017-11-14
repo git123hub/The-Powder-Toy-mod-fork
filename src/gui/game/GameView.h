@@ -70,8 +70,9 @@ private:
 	std::string introTextMessage;
 
 	bool doScreenshot;
-	bool recording;
 	int screenshotIndex;
+	bool recording;
+	int recordingFolder;
 	int recordingIndex;
 
 	ui::Point currentPoint, lastPoint;
@@ -113,6 +114,7 @@ private:
 	ui::Point mousePosition;
 
 	VideoBuffer * placeSaveThumb;
+	ui::Point placeSaveOffset;
 
 	SimulationSample sample;
 
@@ -121,7 +123,6 @@ private:
 	void SetSaveButtonTooltips();
 
 	void screenshot();
-	void record();
 
 	void enableShiftBehaviour();
 	void disableShiftBehaviour();
@@ -152,6 +153,9 @@ public:
 	void ExitPrompt();
 	SelectMode GetSelectMode() { return selectMode; }
 	void BeginStampSelection();
+	ui::Point GetPlaceSaveOffset() { return placeSaveOffset; }
+	void SetPlaceSaveOffset(ui::Point offset) { placeSaveOffset = offset; }
+	int Record(bool record);
 
 	//all of these are only here for one debug lines
 	bool GetMouseDown() { return isMouseDown; }

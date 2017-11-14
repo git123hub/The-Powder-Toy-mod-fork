@@ -549,10 +549,12 @@ void GameController::LoadStamp(GameSave *stamp)
 
 void GameController::TranslateSave(ui::Point point)
 {
-	matrix2d transform = m2d_identity;
 	vector2d translate = v2d_new(point.X, point.Y);
-	gameModel->GetPlaceSave()->Transform(transform, translate);
+	vector2d translated = gameModel->GetPlaceSave()->Translate(translate);
+	ui::Point currentPlaceSaveOffset = gameView->GetPlaceSaveOffset();
+	// resets placeSaveOffset to 0, which is why we back it up first
 	gameModel->SetPlaceSave(gameModel->GetPlaceSave());
+	gameView->SetPlaceSaveOffset(ui::Point(translated.x, translated.y) + currentPlaceSaveOffset);
 }
 
 void GameController::TransformSave(matrix2d transform)
@@ -977,13 +979,8 @@ bool GameController::GetAHeatEnable()
 
 void GameController::ToggleNewtonianGravity()
 {
-	if (gameModel->GetSimulation()->grav->ngrav_enable)
-		gameModel->GetSimulation()->grav->stop_grav_async();
-	else
-		gameModel->GetSimulation()->grav->start_grav_async();
-	gameModel->UpdateQuickOptions();
+	gameModel->SetNewtonianGravity(!gameModel->GetNewtonianGrvity());
 }
-
 
 void GameController::LoadRenderPreset(int presetNum)
 {
@@ -1627,6 +1624,11 @@ std::string GameController::WallName(int type)
 		return std::string(gameModel->GetSimulation()->wtypes[type].name);
 	else
 		return "";
+}
+
+int GameController::Record(bool record)
+{
+	return gameView->Record(record);
 }
 
 void GameController::NotifyAuthUserChanged(Client * sender)

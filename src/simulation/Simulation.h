@@ -58,6 +58,7 @@ public:
 	int replaceModeFlags;
 	bool isFromMyMod;
 	bool isPrevFromMyMod;
+	int check_neut_counter;
 
 	char can_move[PT_NUM][PT_NUM];
 	int debug_currentParticle;
@@ -77,6 +78,10 @@ public:
 	int lightningRecreate;
 	int extraDelay;
 	int delayEnd;
+	int ineutcount;
+#ifdef TPT_NEED_DLL_PLUGIN
+	int dllexceptionflag;
+#endif
 	//Stickman
 	playerst player;
 	playerst player2;
@@ -118,6 +123,7 @@ public:
 	float sim_max_pressure;
 	//Particles
 	Particle parts[NPART];
+	// int part_references [NPART];
 	int pmap[YRES][XRES];
 	int photons[YRES][XRES];
 	int pmap_count[YRES][XRES];
@@ -136,6 +142,10 @@ public:
 	int sandcolour;
 	int sandcolour_frame;
 	bool no_generating_BHOL;
+
+	//Cooldowns and random seeds
+	static int check_neut_cooldown;
+	static int rndseed;
 
 	int Load(GameSave * save, bool includePressure = true);
 	int Load(int x, int y, GameSave * save, bool includePressure = true);
@@ -252,6 +262,7 @@ public:
 	int get_normal(int pt, int x, int y, float dx, float dy, float *nx, float *ny);
 	int get_normal_interp(int pt, float x0, float y0, float dx, float dy, float *nx, float *ny);
 	void clear_sim();
+	void check_neut();
 	Simulation();
 	~Simulation();
 
@@ -270,5 +281,10 @@ public:
 		return std::fmod(x, y) + (x>=0 ? 0 : y);
 	}
 };
+
+#ifdef _MSC_VER
+unsigned msvc_ctz(unsigned a);
+unsigned msvc_clz(unsigned a);
+#endif
 
 #endif /* SIMULATION_H */

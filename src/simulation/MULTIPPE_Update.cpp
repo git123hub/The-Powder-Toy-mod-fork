@@ -2,7 +2,7 @@
 #include "simulation/Air.h"
 //#include "simulation/Gravity.h"
 #include "simulation/MULTIPPE_Update.h" // link to Renderer
-// #include "SDLCompat.h" // SDL_Delay in SDL.h? 
+#include "simplugin.h"
 
 #ifdef LUACONSOLE
 #include "lua/LuaScriptInterface.h"
@@ -10,20 +10,6 @@
 #endif
 
 #ifdef _MSC_VER
-unsigned msvc_ctz(unsigned a)
-{
-	unsigned long i;
-	_BitScanForward(&i, a);
-	return i;
-}
-
-unsigned msvc_clz(unsigned a)
-{
-	unsigned long i;
-	_BitScanReverse(&i, a);
-	return 31 - i;
-}
-
 #define __builtin_ctz msvc_ctz
 #define __builtin_clz msvc_clz
 #endif
@@ -33,7 +19,7 @@ Renderer * MULTIPPE_Update::ren_;
 
 // 'UPDATE_FUNC_ARGS' definition: Simulation* sim, int i, int x, int y, int surround_space, int nt, Particle *parts, int pmap[YRES][XRES]
 // FLAG_SKIPMOVE: not only implemented for PHOT
-
+	
 int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 {
 	int return_value = 1; // skip movement, 'stagnant' check, legacyUpdate, etc.
@@ -44,8 +30,10 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 	int rr, rndstore, rt, rii, rrx, rry, nx, ny, pavg, rrt;
 	// int tmp_r;
 	float rvx, rvy, rdif;
-	int docontinue;
+	int docontinue, rtmp2;
 	rtmp = parts[i].tmp;
+
+	static Particle * temp_part, * temp_part_2, * prev_temp_part;
 	
 	switch (rlife)
 	{
@@ -178,13 +166,13 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		parts[ri].vx = rvx * rdif / 16.0f;
 		parts[ri].vy = rvy * rdif / 16.0f;
 		rctype = parts[i].ctype;
-		rtmp = rctype & 0x3FFFFFFF;
-		rctype >>= 30;
-		if (rtmp)
-			parts[ri].ctype = rtmp;
+		rtmp = rctype >> 30;
+		rctype &= 0x3FFFFFFF;
+		if (rctype)
+			parts[ri].ctype = rctype;
 		parts[ri].temp = parts[i].temp;
 		parts[ri].life = parts[i].tmp2;
-		parts[ri].tmp = rctype & 3;
+		parts[ri].tmp = rtmp & 3;
 		
 		break;
 	case 5: // reserved for Simulation.cpp
@@ -193,11 +181,10 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 	case 8:
 	case 9:
 #endif
-	case 13: // decoration only, no update function
+	case 13: // decoration only, no update function [静态装饰元素]
 	case 15: // reserved for Simulation.cpp
 	case 17: // reserved for 186.cpp and Simulation.cpp
 	case 18: // decoration only, no update function
-	case 22: // reserved for Simulation.cpp
 	case 23: // reserved for stickmen
 	case 25: // reserved for E189's life = 16, ctype = 10.
 	case 27: // reserved for stickmen
@@ -242,7 +229,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		}
 		r = sim->photons[y][x];
 		rndstore = rand();
-		if (r && (r&0xFF) != PT_GRVT)
+		if ((r&0xFF) == PT_PHOT || (r&0xFF) == PT_PROT || (r&0xFF) == PT_NEUT)
 		{
 			parts[i].tmp += 2;
 			if (parts[r>>8].temp > 370.0f)
@@ -366,9 +353,15 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 		break;
 #endif /* NO_SPC_ELEM_EXPLODE */
 	case 10: // electronics debugger input [电子产品调试]
-		if ((rtmp & 0xFF) >= 0x7C)
-			rtmp -= 0x6C;
-		else if ((rtmp & 0xFF) >= 0x10)
+		{
+		int funcid = rtmp & 0xFF, fcall = -1;
+		if (rtmp & 0x100)
+		{
+			fcall = funcid;
+		}
+		else if (funcid >= 0x78)
+			funcid -= 0x66;
+		else if (funcid >= 0x12)
 			return return_value;
 		for (rx = -1; rx <= 1; rx++)
 			for (ry = -1; ry <= 1; ry++)
@@ -379,7 +372,15 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						continue;
 					if ((r&0xFF) == PT_SPRK && parts[r>>8].life == 3)
 					{
-						switch (rtmp & 0xFF)
+						if (fcall >= 0)
+						{
+#if !defined(RENDERER) && defined(LUACONSOLE)
+							luacon_debug_trigger(fcall, i, x, y);
+#endif
+							continue;
+						}
+						static char shift1[7] = {8,9,1,3,11,4,5}; // 23,24,1,2,15,4,5
+						switch (funcid & 0xFF)
 						{
 						case 0:
 							if (Element_MULTIPP::maxPrior <= parts[i].ctype)
@@ -388,11 +389,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								Element_MULTIPP::maxPrior = parts[i].ctype;
 							}
 							break;
-						case 1: sim->SimExtraFunc |=  0x02; break;
-						case 2: sim->SimExtraFunc |=  0x08; break;
 						case 3: sim->SimExtraFunc &= ~0x08; break;
-						case 4: sim->SimExtraFunc |=  0x10; break;
-						case 5: sim->SimExtraFunc |=  0x20; break;
 						case 6:
 							switch (parts[r>>8].ctype)
 							{
@@ -402,22 +399,15 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							}
 							break;
 						case 7:
-							if (parts[i].temp < 273.15f)
-								parts[i].temp = 273.15f;
-							rdif = (int)(parts[i].temp - 272.65f);
-							if (parts[r>>8].ctype != PT_INST)
-								rdif /= 100.0f;
-							sim->sim_max_pressure += rdif;
-							if (sim->sim_max_pressure > 256.0f)
-								sim->sim_max_pressure = 256.0f;
-							break;
 						case 8:
 							if (parts[i].temp < 273.15f)
 								parts[i].temp = 273.15f;
 							rdif = (int)(parts[i].temp - 272.65f);
 							if (parts[r>>8].ctype != PT_INST)
 								rdif /= 100.0f;
-							sim->sim_max_pressure -= rdif;
+							sim->sim_max_pressure += (funcid & 1) ? rdif : -rdif;
+							if (sim->sim_max_pressure > 256.0f)
+								sim->sim_max_pressure = 256.0f;
 							if (sim->sim_max_pressure < 0.0f)
 								sim->sim_max_pressure = 0.0f;
 							break;
@@ -468,17 +458,11 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							{
 								int lifeincx = parts[i].ctype;
 								rctype = parts[r>>8].ctype;
-								if (rctype == PT_INST)
-								{
-									parts[sim->player.self_ID].life = 0;
-									parts[sim->player2.self_ID].life = 0;
-								}
-								else if (rctype == PT_NSCN)
-									lifeincx = -lifeincx;
-								if (parts[sim->player.self_ID].type == PT_STKM)
-									parts[sim->player.self_ID].life += lifeincx;
-								if (parts[sim->player2.self_ID].type == PT_STKM2)
-									parts[sim->player2.self_ID].life += lifeincx;
+								(rctype == PT_NSCN) && (lifeincx = -lifeincx);
+								sim->SimExtraFunc |= 0x1000;
+								pavg = (Element_STKM::phase + 2) % 4;
+								Element_STKM::lifeinc[pavg] |= 2 | (rctype == PT_INST);
+								Element_STKM::lifeinc[pavg + 1] += lifeincx;
 							}
 							break;
 						case 14: // set stickman's element power
@@ -508,8 +492,14 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								{
 									rrx = pmap[y-ry][x-rx];
 									if ((rrx&0xFF) == PT_CRAY)
-										rii = parts[rrx>>8].ctype;
+									{
+										rii = parts[rrx>>8].ctype & 0xFF;
+										if (rii == PT_LIFE)
+											rii = 0x100 | (parts[rrx>>8].ctype >> 8);
+									}
 								}
+								if (!sim->IsValidElement(rii) && (rii < 0x100 || rii > 0x103))
+									break;
 								if (rctype == PT_PSCN || rctype == PT_INST)
 									Element_STKM::STKM_set_element(sim, &sim->player, rii),
 									sim->player.__flags |= 2;
@@ -519,15 +509,12 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 							}
 							break;
 						case 15:
-							// SDL_Delay(parts[i].ctype);
-							// *(Element_MULTIPP::EngineFrameStart) += parts[i].ctype;
-							sim->SimExtraFunc |= 0x800;
 							sim->extraDelay += parts[i].ctype;
-							break;
-						case 17: sim->SimExtraFunc |= 0x200; break;
-						case 18: sim->SimExtraFunc |= 0x100; break;
-						case 19:
+						case 1: case 2: case 4: case 5: case 23: case 24:
+							sim->SimExtraFunc |= 1 << shift1[(funcid + 1) % 12]; break;
+						case 25:
 							{
+#ifdef X86
 #if defined(WIN) && !defined(__GNUC__)
 							// not tested yet
 								__asm {
@@ -536,17 +523,19 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									popfd
 								}
 #else
-								__asm__ __volatile ("pushf; orl $0x100, (%esp); popf");
+								__asm__ __volatile ("pushf; orl $0x100, (%esp); popf");	
+#endif
 #endif
 							}
 							return return_value;
 						}
-						if ((rtmp & 0x1FE) == 0x100 && (rx != ry))
+						if ((rtmp & 0x3FE) == 0x200 && (rx != ry))
 							MULTIPPE_Update::InsertText(sim, i, x, y, -rx, -ry);
 					}
 				}
+		}
 		break;
-	case 11: // photons emitter
+	case 11: // photons emitter [单光子发射器]
 		for (rx = -1; rx <= 1; rx++)
 			for (ry = -1; ry <= 1; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
@@ -571,7 +560,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					}
 				}
 		break;
-	case 12: // SPRK reflector
+	case 12: // SPRK reflector [电脉冲反射器]
 		if ((rtmp & 0x7) != 0x4)
 		{
 			for (rx = -1; rx <= 1; rx++)
@@ -591,8 +580,9 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								parts[i].tmp ^= 1; break;
 							case 2:
 								rr = pmap[y-ry][x-rx];
-								if ((rr & 0xFF) == ELEM_MULTIPP)
+								switch (rr & 0xFF)
 								{
+								case ELEM_MULTIPP:
 									if (parts[rr>>8].life == 12)
 										sim->kill_part(rr >> 8);
 									else if (parts[rr>>8].life == 15)
@@ -609,29 +599,30 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 											parts[rr>>8].ctype = (rctype << rrt | rctype >> (30-rrt)) & 0x3FFFFFFF;
 										}
 									}
-								}
-								else if (!rr)
-								{
+									break;
+								case PT_NONE:
 									ri = sim->create_part(-1,x-rx,y-ry,ELEM_MULTIPP,12);
 									if (ri >= 0)
 										parts[ri].tmp = 3;
-								}
-								else if ((rr & 0xFF) == PT_FILT) // might to making FILT oscillator
-								{
-									int * ctype_ptr = &parts[rr>>8].ctype;
-									if (parts[i].temp > 373.0f)
+									break;
+								case PT_FILT: // might to making FILT oscillator
 									{
-										if (*ctype_ptr == 1)
-											{ parts[i].temp = 295.15f; continue; }
-										*ctype_ptr >>= 1;
+										int * ctype_ptr = &parts[rr>>8].ctype;
+										if (parts[i].temp > 373.0f)
+										{
+											if (*ctype_ptr == 1)
+												{ parts[i].temp = 295.15f; continue; }
+											*ctype_ptr >>= 1;
+										}
+										else
+										{
+											if (*ctype_ptr == 0x20000000)
+												{ parts[i].temp = 395.15f; continue; }
+											*ctype_ptr <<= 1;
+											*ctype_ptr &= 0x3FFFFFFF;
+										}
 									}
-									else
-									{
-										if (*ctype_ptr == 0x20000000)
-											{ parts[i].temp = 395.15f; continue; }
-										*ctype_ptr <<= 1;
-										*ctype_ptr &= 0x3FFFFFFF;
-									}
+									break;
 								}
 								break;
 							case 5:
@@ -659,7 +650,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					}
 		}
 		break;
-	case 14: // dynamic decoration (DECO2)
+	case 14: // dynamic decoration (DECO2) [动态装饰元素]
 		switch (parts[i].tmp2 >> 24)
 		{
 		case 0:
@@ -687,7 +678,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			break;
 		}
 		break;
-	case 16:
+	case 16: // [电子产品大集合]
 		switch (rctype = parts[i].ctype)
 		{
 		case 0: // logic gate
@@ -752,8 +743,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				}
 				if (parts[i].tmp2)
 				{
-					for (rx = -2; rx <= 2; rx++)
-						for (ry = -2; ry <= 2; ry++)
+					for (rx=-2; rx<3; rx++)
+						for (ry=-2; ry<3; ry++)
 							if (BOUNDS_CHECK && (rx || ry))
 							{
 								r = pmap[y+ry][x+rx];
@@ -763,8 +754,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 					parts[i].tmp--;
 					parts[i].tmp2 = 0;
 				}
-				for (rx = -2; rx <= 2; rx++)
-					for (ry = -2; ry <= 2; ry++)
+				for (rx=-2; rx<3; rx++)
+					for (ry=-2; ry<3; ry++)
 						if (BOUNDS_CHECK && (rx || ry))
 						{
 							r = pmap[y+ry][x+rx];
@@ -1169,10 +1160,12 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 						{
 							nx = x + rx; ny = y + ry;
 							r = pmap[ny][nx];
+							int nrx, nry, brx, bry;
 							if (!r)
 								continue;
-							if ((r & 0xFF) == PT_FILT)
+							switch (r & 0xFF)
 							{
+							case PT_FILT:
 								rrx = parts[r>>8].ctype;
 								rry = parts[i].tmp;
 								switch (rry) // rry = sender type
@@ -1235,74 +1228,169 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									parts[r>>8].ctype = rrx;
 									r = pmap[ny += ry][nx += rx];
 								}
-								continue;
-							}
-							else if ((r & 0xFF) == PT_CRAY)
-							{
-								int ncount = 0;
-								docontinue = 1;
-								rrx = (rtmp == PT_PSCN) ? 1 : 0;
-								if (rtmp != PT_NSCN && !rrx)
-									continue;
-								rry = 0;
-								if (parts[r>>8].dcolour == 0xFF000000) // if black deco is on
-									rry = 0xFF000000; // set deco colour to black
-								while (docontinue)
+								break;
+							case PT_CRAY:
 								{
-									nx += rx; ny += ry;
-									if (!sim->InBounds(nx, ny))
-									{
-									break1d:
-										break;
-									}
-									ncount++;
-									r = pmap[ny][nx];
-									if (!r)
-									{
-										ri = sim->create_part(-1, nx, ny, PT_INWR);
-										if (ri >= 0)
-											parts[ri].dcolour = rry;
-										docontinue = !rrx;
+									int ncount = 0;
+									docontinue = (rtmp == PT_INST) ? 2 : 1;
+									rrx = (rtmp == PT_PSCN) ? 1 : 0;
+									if (rtmp != PT_NSCN && rtmp != PT_INST && !rrx)
 										continue;
-									}
-									switch (r&0xFF)
+									rry = 0;
+									prev_temp_part = &parts[r>>8];
+									rrt = ((int)prev_temp_part->temp - 268) / 10;
+									if (rrt < 0) rrt = 0;
+									temp_part = NULL;
+									if (parts[r>>8].dcolour == 0xFF000000) // if black deco is on
+										rry = 0xFF000000; // set deco colour to black
+									while (docontinue)
 									{
-									case PT_INWR:
-										sim->kill_part(r>>8);
-										docontinue = rrx;
-										continue;
-									case PT_FILT:
-										if (parts[r>>8].tmp == 0) // if mode is "set colour"
-											rry = parts[r>>8].dcolour;
-										break;
-									case PT_BRCK:
-										docontinue = parts[r>>8].tmp;
-										parts[r>>8].tmp = 1;
-										continue;
-									case ELEM_MULTIPP:
-										if (parts[r>>8].life == 3)
+										nx += rx; ny += ry;
+										if (!sim->InBounds(nx, ny))
 										{
-											r = pmap[ny+ry][nx+rx];
-											if ((r&0xFF) == PT_METL || (r&0xFF) == PT_INDC)
-												conductTo (sim, r, nx+rx, ny+ry, parts);
-											while (--ncount)
-											{
-												nx -= rx; ny -= ry;
-												rr = pmap[ny][nx];
-												if ((rr & 0xFF) == PT_BRCK)
-													parts[rr>>8].tmp = 0;
-											}
+										break1d:
+											break;
 										}
-										goto break1d;
-									default:
-										docontinue = 0;
+										ncount++;
+										r = pmap[ny][nx];
+										if (!r)
+										{
+											if (docontinue == 1)
+											{
+												ri = sim->create_part(-1, nx, ny, PT_INWR);
+												if (ri >= 0)
+													parts[ri].dcolour = rry;
+												docontinue = !rrx;
+											}
+											else
+												docontinue = 0;
+											continue;
+										}
+										switch (r&0xFF)
+										{
+										case PT_INWR:
+											if (docontinue == 1)
+											{
+												sim->kill_part(r>>8);
+												docontinue = rrx;
+											}
+											else
+												docontinue = 0;
+											continue;
+										case PT_FILT:
+											if (parts[r>>8].tmp == 0) // if mode is "set colour"
+												rry = parts[r>>8].dcolour;
+											break;
+										case PT_BRCK:
+											docontinue = parts[r>>8].tmp;
+											parts[r>>8].tmp = 1;
+											continue;
+										case ELEM_MULTIPP:
+											switch (parts[r>>8].life)
+											{
+											case 3:
+												r = pmap[ny+ry][nx+rx];
+												if ((r&0xFF) == PT_METL || (r&0xFF) == PT_INDC)
+													conductTo (sim, r, nx+rx, ny+ry, parts);
+												while (--ncount)
+												{
+													nx -= rx; ny -= ry;
+													rr = pmap[ny][nx];
+													if ((rr & 0xFF) == PT_BRCK)
+														parts[rr>>8].tmp = 0;
+												}
+												break;
+											case 4:
+												parts[r>>8].tmp = (rx & 15) | ((ry & 15) << 4) | 0x3000;
+												break;
+											case 12:
+												if (rrx && !(parts[r>>8].tmp & 6))
+													parts[r>>8].tmp |= 2;
+												break;
+											case 39:
+												if (rtmp != PT_PSCN && temp_part == NULL)
+												{
+													parts[r>>8].life = 0;
+													sim->part_change_type(r>>8, nx, ny, parts[r>>8].ctype & 0xFF);
+													if (rtmp == PT_INST && parts[r>>8].type == PT_QRTZ)
+														temp_part = &parts[r>>8];
+												}
+												docontinue = 2;
+												continue;
+											}
+											goto break1d;
+										case PT_QRTZ:
+											if (rtmp == PT_PSCN)
+											{
+												sim->part_change_type(r>>8, nx, ny, ELEM_MULTIPP);
+												parts[r>>8].life = 39;
+												parts[r>>8].ctype = PT_QRTZ | (rrt<<8);
+											}
+											else if (rtmp == PT_INST && temp_part != NULL)
+											{
+												if (temp_part->tmp >= 0 && parts[r>>8].tmp >= 0)
+												{
+													parts[r>>8].tmp += temp_part->tmp;
+													temp_part->tmp = 0;
+													goto break1d;
+												}
+											}
+											docontinue = 2;
+											break;
+										case PT_VIBR:
+										case PT_BVBR:
+											rii = 0;
+										continue1d:
+											// do {
+											rii += (parts[r>>8].tmp + (int)parts[r>>8].temp / 3 - 81) * 2;
+											parts[r>>8].temp = 273.15f;
+											parts[r>>8].tmp = 0;
+											ny += ry; nx += rx;
+											// if (!BOUNDS_CHECK) goto break1d;
+											r = pmap[ny][nx];
+											// } while ...
+											if ((r & 0xFF) == PT_VIBR || (r & 0xFF) == PT_BVBR)
+												goto continue1d;
+											else if ((r & 0xFF) == PT_PSTN && parts[r>>8].life)
+												r = pmap[ny += ry][nx += rx];
+											if ((r & 0xFF) == ELEM_MULTIPP && parts[r>>8].life == 12 && parts[r>>8].tmp == 2)
+												parts[r>>8].tmp2 += rii;
+											goto break1d;
+										case PT_FRAY:
+											rii = parts[r>>8].tmp;
+											rrt++;
+											rr = pmap[ny+ry*rrt][nx+rx*rrt];
+											if ((rr & 0xFF) == PT_CRAY || (rr & 0xFF) == PT_DRAY || (rr & 0xFF) == PT_PSTN)
+											{
+												if (prev_temp_part->ctype == PT_ACEL)
+													parts[rr>>8].tmp = rii;
+												else if (prev_temp_part->ctype == PT_DCEL)
+													parts[rr>>8].tmp2 = rii;
+											}
+											goto break1d;
+										case PT_RPEL:
+											for (pavg = 1; pavg >= -2; pavg -= 2)
+											{
+												static int * r1, * r2;
+												r1 = &pmap[ny+rx*pavg][nx-ry*pavg];
+												r2 = &pmap[ny+rx*pavg*2][nx-ry*pavg*2];
+												if ((*r1 & 0xFF) == PT_BTRY && !(*r2))
+												{
+													parts[(*r1)>>8].x -= ry*pavg;
+													parts[(*r1)>>8].y += rx*pavg;
+													*r2 = *r1;
+													*r1 = 0;
+												}
+											}
+											goto break1d;
+										default:
+											docontinue = 0;
+										}
 									}
 								}
-								continue;
-							}
-							else if ((r & 0xFF) == ELEM_MULTIPP)
-							{
-								if (parts[r>>8].life == 28 && (parts[r>>8].tmp & 0xC) == 0x4 && !(rx && ry))
+								break;
+							case ELEM_MULTIPP:
+								if (parts[r>>8].life == 28 && (parts[r>>8].tmp & 0x1C) == 0x4 && !(rx && ry))
 								{
 									int dir = parts[r>>8].tmp;
 									int rxi = 0, ryi = 0;
@@ -1311,6 +1399,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 									else
 										ryi = (dir == 4 ? -1 : 1);
 									rrx = nx + rxi, rry = ny + ryi;
+									temp_part = NULL;
 									while (sim->InBounds(rrx, rry))
 									{
 										rii = pmap[rry][rrx];
@@ -1318,34 +1407,47 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 											sim->kill_part(rii>>8), rii = 0;
 										if (!rii)
 										{
+										continue2a:
 											rrx += rxi, rry += ryi;
 											continue;
 										}
-										if ((rii&0xFF) == ELEM_MULTIPP && parts[rii>>8].life == 28)
+										if (temp_part)
+										{
+											nrx = rrx - rxi;
+											nry = rry - ryi;
+										}
+										else if ((rii&0xFF) == ELEM_MULTIPP && ((pavg = parts[rii>>8].life) == 28 || pavg == 32))
 										{
 											// use "rtmp"
-											int nrx = rrx, nry = rry;
-											if (rtmp == PT_PSCN)
-												nrx += rxi, nry += ryi;
-											else if (rtmp == PT_NSCN)
-												nrx -= rxi, nry -= ryi;
-											else
-												break;
-											if (pmap[nry][nrx])
+											temp_part = &parts[rii>>8];
+											nrx = brx = rrx;
+											nry = bry = rry;
+											if (rtmp == PT_PSCN) nrx += rxi, nry += ryi;
+											else if (rtmp == PT_NSCN) nrx -= rxi, nry -= ryi;
+											else break;
+											rr = pmap[nry][nrx];
+											if ((rr&0xFF) == PT_BRAY)
+												sim->kill_part(rr>>8);
+											else if (rr)
 											{
-												if (rtmp == PT_PSCN)
-													nrx = nx + rxi, nry = ny + ryi;
-												else
-													sim->kill_part(rii>>8);
+												if (rtmp == PT_PSCN) nrx = nx + rxi, nry = ny + ryi;
+												else goto continue2a;
 											}
-											parts[rii>>8].x = (float)nrx;
-											parts[rii>>8].y = (float)nry;
-											pmap[nry][nrx] = rii;
-											pmap[rry][rrx] = 0;
 										}
+										else break;
+										temp_part->x = (float)nrx;
+										temp_part->y = (float)nry;
+										pmap[bry][brx] = 0;
+										pmap[nry][nrx] = rii;
 										break;
 									}
 								}
+								else if (parts[r>>8].life == 16 && parts[r>>8].ctype == 5 && parts[r>>8].tmp >= 0x40)
+								{
+									rrt = parts[r>>8].tmp;
+									parts[r>>8].tmp = ((rrt - 0x40) ^ 0x40) + 0x40;
+								}
+								break;
 							}
 						}
 				parts[i].tmp2 = 0;
@@ -1372,6 +1474,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								// rrx = wavelengths
 								case PT_PSCN:
 									rrx &= ~0x1;
+									// no break
 								case PT_NSCN:
 									rrx |= 0x1;
 									break;
@@ -1418,7 +1521,14 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 								break;
 							case PT_FRAY:
 								rrx = r & 0xFF;
-								rii = (parts[i].tmp == PT_PSCN) ? 1 : -1;
+								if ((rtmp & 0xFF) == PT_BRAY)
+								{
+									rii = floor((parts[i].temp - 268.15) / 10);
+									if (rtmp & 0x100)
+										rii = -rii;
+								}
+								else
+									rii = (parts[i].tmp == PT_PSCN) ? 1 : -1;
 								parts[r>>8].tmp += rii;
 								if (parts[r>>8].tmp < 0)
 									parts[r>>8].tmp = 0;
@@ -1437,7 +1547,7 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 											rt = PT_PRTI;
 										else
 											rt = PT_PRTO;
-										sim->part_change_type(r>>8, ny, nx, rt);
+										sim->part_change_type(r>>8, nx, ny, rt);
 										r = pmap[ny += ry][nx += rx];
 									}
 								}
@@ -1904,6 +2014,9 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			}
 			break;
 		case 30: // get TPT options
+			{
+			bool inverted = rtmp & 0x80;
+			rtmp &= 0x7F;
 			switch (rtmp)
 			{
 				case  0: rr = sim->pretty_powder; break;		// get "P" option state
@@ -1918,19 +2031,48 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				case  9: rr = !(sim->air->airMode & 1); break;	// check "Air pressure"
 				case 10: rr = !sim->gravityMode; break;			// check "Vertical gravity mode"
 				case 11: rr = sim->gravityMode == 2; break;		// check "Radial gravity mode"
+				case 12: rr = (sim->dllexceptionflag & 2); break;	// is DLL call error trigged?
 			}
+			inverted && (rr = !rr);
 			if (rr)
 				Element_BTRY::update(UPDATE_FUNC_SUBCALL_ARGS);
+			}
+			break;
+		case 31: // fast laser?
+			rx = tron_rx[rtmp & 3];
+			ry = tron_ry[rtmp & 3];
+			ri = sim->create_part(-1, x + rx, y + ry, PT_E186);
+			parts[ri].ctype = 0x105;
+			rtmp >>= 2;
+			parts[ri].vx = rx * rtmp;
+			parts[ri].vy = ry * rtmp;
+			if (ri > i)
+				parts[ri].flags |= FLAG_SKIPMOVE;
+			break;
+		case 32: // capacitor
+			rii = parts[i].tmp2;
+			rii && (parts[i].tmp2--);
+			for (rx=-2; rx<3; rx++)
+				for (ry=-2; ry<3; ry++)
+					if (BOUNDS_CHECK && (rx || ry))
+					{
+						r = pmap[y+ry][x+rx];
+						if ((r&0xFF) == PT_SPRK && parts[r>>8].ctype == PT_PSCN && parts[r>>8].life == 3)
+						{
+							parts[i].tmp2 = parts[i].tmp;
+						}
+						else if (rii && ((r&0xFF) == PT_NSCN))
+							conductTo (sim, r, x+rx, y+ry, parts);
+					}
 			break;
 		}
 		break;
-			
 	case 19:
 		parts[i].tmp2 = parts[i].tmp;
 		if (parts[i].tmp)
 			--parts[i].tmp;
-		for (rx = -2; rx <= 2; rx++)
-			for (ry = -2; ry <= 2; ry++)
+		for (rx=-2; rx<3; rx++)
+			for (ry=-2; ry<3; ry++)
 				if (BOUNDS_CHECK && (rx || ry))
 				{
 					r = pmap[y+ry][x+rx];
@@ -2146,11 +2288,31 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 										parts[r>>8].life += 10;
 									}
 									break;
+								case PT_PQRT:
+									if (parts[r>>8].tmp >= 0)
+									{
+										rr = pmap[y-ry][x-rx];
+										if ((rr&0xFF) == PT_QRTZ && parts[rr>>8].tmp >= 0)
+										{
+											if (rtmp >= 0)
+												rrt = parts[r>>8].tmp;
+											else
+												rrt = -parts[rr>>8].tmp;
+											parts[rr>>8].tmp += rrt;
+											parts[r >>8].tmp -= rrt;
+										}
+										else if ((rr&0xFF) == PT_SLTW)
+										{
+											parts[r>>8].tmp++;
+											sim->kill_part(rr>>8);
+										}
+									}
+									break;
 								case ELEM_MULTIPP:
 									if (parts[r>>8].life == 38)
 									{
 										rctype = parts[r>>8].ctype;
-										if (rctype == PT_RFRG || rctype == PT_RFGL) // ACID/CAUS + GAS --> 3 RFRG
+										if (rctype == PT_RFRG || rctype == PT_RFGL) // ACID/CAUS + GAS --> N RFRG
 										{
 											rr = pmap[y-ry][x-rx];
 											if ((rr&0xFF) == PT_CAUS || (rr&0xFF) == PT_ACID)
@@ -2182,6 +2344,8 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 				}
 		}
 		break;
+	case 22:
+		if (parts[i].tmp2) parts[i].tmp2 --; break;
 	case 24: // moving duplicator particle
 		if (parts[i].flags & FLAG_SKIPMOVE) // if wait flag exist
 			parts[i].flags &= ~FLAG_SKIPMOVE; // clear wait flag
@@ -2665,7 +2829,26 @@ int MULTIPPE_Update::update(UPDATE_FUNC_ARGS)
 			parts[i].tmp = rtmp;
 		}
 		break;
+	case 39:
+		if (parts[i].ctype & ~0xFF)
+		{
+			parts[i].ctype -= 0x100;
+			if (!(parts[i].ctype & ~0xFF))
+			{
+				parts[i].life = 0;
+				sim->part_change_type(i, x, y, parts[i].ctype);
+				return return_value;
+			}
+		}
+		break;
 #if !defined(RENDERER) && defined(LUACONSOLE)
+	case 40:
+		{
+			int funcid = (parts[i].ctype & 0x1F) + 0x100;
+			if (lua_trigger_fmode[funcid]) luacall_debug_trigger (funcid, i, x, y);
+		}
+		break;
+
 	default: // reserved by Lua
 		if (lua_el_mode[parts[i].type] == 1)
 			return_value = 0;
